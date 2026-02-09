@@ -1,38 +1,99 @@
-import React from 'react';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Tabs } from 'expo-router';
-import { useClientOnlyValue } from '@/components/useClientOnlyValue';
+import React from "react";
+import { Tabs } from "expo-router";
+import { useClientOnlyValue } from "@/components/useClientOnlyValue";
+import {
+	Home,
+	Clock,
+	Settings,
+	CarFront,
+} from "lucide-react-native";
+import { Colors } from "@/constants/Colors";
+import { useAppTheme } from "@/contexts/theme-context";
 
-function TabBarIcon(props: {
-  name: React.ComponentProps<typeof FontAwesome>['name'];
-  color: string;
+type LucideIconComponent = React.ComponentType<{
+	size?: number;
+	color?: string;
+	strokeWidth?: number;
+	style?: any;
+}>;
+
+function TabIcon({
+	Icon,
+	focused,
+}: {
+	Icon: LucideIconComponent;
+	focused: boolean;
 }) {
-  return <FontAwesome size={18} style={{ marginBottom: -3 }} {...props} />;
+	const { colorMode } = useAppTheme();
+	const isDark = colorMode === "dark";
+	const defaultIcon = isDark ? Colors.dark.text : Colors.light.text;
+	const activeIcon = isDark ? Colors.dark.icon : Colors.light.icon;
+
+	return (
+		<Icon
+			size={28}
+			color={focused ? activeIcon : defaultIcon}
+			strokeWidth={focused ? 2 : 1.5}
+			style={{ marginBottom: 0, marginTop: 17 }}
+		/>
+	);
 }
 
 export default function TabLayout() {
-  return (
-    <Tabs
-      screenOptions={{
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
-        headerShown: useClientOnlyValue(false, true),
-      }}
-    >
-      <Tabs.Screen
-        name="tab1"
-        options={{
-          title: 'Tab 1',
-          tabBarIcon: ({ color }) => <TabBarIcon name="star-o" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="tab2"
-        options={{
-          title: 'Tab 2',
-          tabBarIcon: ({ color }) => <TabBarIcon name="star-o" color={color} />,
-        }}
-      />
-    </Tabs>
-  );
+	const { colorMode } = useAppTheme();
+	const isDark = colorMode === "dark";
+	const backgroundColor =
+		isDark ? Colors.dark.tabsBackground : Colors.light.tabsBackground;
+
+	return (
+		<Tabs
+			screenOptions={{
+				headerShown: useClientOnlyValue(true, false),
+				tabBarShowLabel: false,
+				tabBarStyle: {
+					backgroundColor,
+					borderTopColor: "#687076",
+					paddingBottom: 12,
+				},
+			}}
+		>
+			<Tabs.Screen
+				name="home"
+				options={{
+					headerShown: false,
+
+					tabBarIcon: ({ focused }) => (
+						<TabIcon Icon={Home} focused={focused} />
+					),
+				}}
+			/>
+
+			<Tabs.Screen
+				name="car"
+				options={{
+					tabBarIcon: ({ focused }) => (
+						<TabIcon Icon={CarFront} focused={focused} />
+					),
+				}}
+			/>
+
+			<Tabs.Screen
+				name="history"
+				options={{
+					tabBarIcon: ({ focused }) => (
+						<TabIcon Icon={Clock} focused={focused} />
+					),
+				}}
+			/>
+
+			<Tabs.Screen
+				name="settings"
+				options={{
+					tabBarIcon: ({ focused }) => (
+						<TabIcon Icon={Settings} focused={focused} />
+					),
+				}}
+			/>
+		</Tabs>
+	);
 }

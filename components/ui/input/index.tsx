@@ -1,37 +1,11 @@
 'use client';
 import React from 'react';
-import { createInput } from '@gluestack-ui/core/input/creator';
-import { View, Pressable, TextInput } from 'react-native';
+import { Pressable, TextInput, View } from 'react-native';
 import { tva } from '@gluestack-ui/utils/nativewind-utils';
-import { withStyleContext } from '@gluestack-ui/utils/nativewind-utils';
-import { cssInterop } from 'nativewind';
 import type { VariantProps } from '@gluestack-ui/utils/nativewind-utils';
-import { PrimitiveIcon, UIIcon } from '@gluestack-ui/core/icon/creator';
-
-const SCOPE = 'INPUT';
-
-const UIInput = createInput({
-  Root: withStyleContext(View, SCOPE),
-  Icon: UIIcon,
-  Slot: Pressable,
-  Input: TextInput,
-});
-
-cssInterop(PrimitiveIcon, {
-  className: {
-    target: 'style',
-    nativeStyleToProp: {
-      height: true,
-      width: true,
-      fill: true,
-      color: 'classNameColor',
-      stroke: true,
-    },
-  },
-});
 
 const inputStyle = tva({
-  base: 'h-9 w-full flex-row items-center rounded-md border border-border  dark:bg-input/30 bg-transparent shadow-xs transition-[color,box-shadow] overflow-hidden data-[focus=true]:outline-none data-[focus=true]:border-ring dark:data-[focus=true]:border-ring data-[focus=true]:web:ring-[3px] data-[focus=true]:web:ring-ring/50 data-[invalid=true]:border-destructive/40 dark:data-[invalid=true]:border-destructive/40 data-[invalid=true]:web:ring-destructive/20 dark:data-[invalid=true]:web:ring-destructive/40 data-[disabled=true]:pointer-events-none data-[disabled=true]:cursor-not-allowed data-[disabled=true]:opacity-50 px-3 gap-2',
+  base: 'h-9 w-full flex-row items-center rounded-md border border-border dark:bg-input/30 bg-transparent shadow-xs overflow-hidden px-3 gap-2',
 });
 
 const inputIconStyle = tva({
@@ -43,37 +17,34 @@ const inputSlotStyle = tva({
 });
 
 const inputFieldStyle = tva({
-  base: 'flex-1 text-foreground text-sm md:text-sm py-1 h-full placeholder:text-muted-foreground  web:outline-none ios:leading-[0px] web:cursor-text web:data-[disabled=true]:cursor-not-allowed',
+  base: 'flex-1 text-foreground text-sm md:text-sm py-1 h-full placeholder:text-muted-foreground web:outline-none ios:leading-[0px] web:cursor-text web:data-[disabled=true]:cursor-not-allowed',
 });
 
-type IInputProps = React.ComponentProps<typeof UIInput> &
+type IInputProps = React.ComponentPropsWithoutRef<typeof View> &
   VariantProps<typeof inputStyle> & { className?: string };
-const Input = React.forwardRef<React.ComponentRef<typeof UIInput>, IInputProps>(
+const Input = React.forwardRef<React.ComponentRef<typeof View>, IInputProps>(
   function Input({ className, ...props }, ref) {
     return (
-      <UIInput
+      <View
         ref={ref}
         {...props}
         className={inputStyle({ class: className })}
-        context={{}}
       />
     );
   }
 );
 
-type IInputIconProps = React.ComponentProps<typeof UIInput.Icon> &
+type IInputIconProps = React.ComponentPropsWithoutRef<typeof View> &
   VariantProps<typeof inputIconStyle> & {
     className?: string;
-    height?: number;
-    width?: number;
   };
 
 const InputIcon = React.forwardRef<
-  React.ComponentRef<typeof UIInput.Icon>,
+  React.ComponentRef<typeof View>,
   IInputIconProps
 >(function InputIcon({ className, ...props }, ref) {
   return (
-    <UIInput.Icon
+    <View
       ref={ref}
       {...props}
       className={inputIconStyle({ class: className })}
@@ -81,15 +52,15 @@ const InputIcon = React.forwardRef<
   );
 });
 
-type IInputSlotProps = React.ComponentProps<typeof UIInput.Slot> &
+type IInputSlotProps = React.ComponentPropsWithoutRef<typeof Pressable> &
   VariantProps<typeof inputSlotStyle> & { className?: string };
 
 const InputSlot = React.forwardRef<
-  React.ComponentRef<typeof UIInput.Slot>,
+  React.ComponentRef<typeof Pressable>,
   IInputSlotProps
 >(function InputSlot({ className, ...props }, ref) {
   return (
-    <UIInput.Slot
+    <Pressable
       ref={ref}
       {...props}
       className={inputSlotStyle({
@@ -99,15 +70,15 @@ const InputSlot = React.forwardRef<
   );
 });
 
-type IInputFieldProps = React.ComponentProps<typeof UIInput.Input> &
+type IInputFieldProps = React.ComponentPropsWithoutRef<typeof TextInput> &
   VariantProps<typeof inputFieldStyle> & { className?: string };
 
 const InputField = React.forwardRef<
-  React.ComponentRef<typeof UIInput.Input>,
+  React.ComponentRef<typeof TextInput>,
   IInputFieldProps
 >(function InputField({ className, ...props }, ref) {
   return (
-    <UIInput.Input
+    <TextInput
       ref={ref}
       {...props}
       className={inputFieldStyle({

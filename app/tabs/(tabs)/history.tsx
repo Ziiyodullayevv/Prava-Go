@@ -4,7 +4,7 @@ import { Divider } from '@/components/ui/divider';
 import { Heading } from '@/components/ui/heading';
 import { Text } from '@/components/ui/text';
 
-export default function Tab2() {
+export default function HistaryScreen() {
   return (
     <Center className="flex-1">
       <Heading className="font-bold text-2xl">Expo- Tab 2</Heading>
