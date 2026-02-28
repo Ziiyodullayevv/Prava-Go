@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useLayoutEffect } from 'react';
 import { config } from './config';
 import { View, ViewProps } from 'react-native';
 import { OverlayProvider } from '@gluestack-ui/core/overlay/creator';
@@ -16,16 +16,17 @@ export function GluestackUIProvider({
   style?: ViewProps['style'];
 }) {
   const { colorScheme, setColorScheme } = useColorScheme();
+  const resolvedMode =
+    mode === 'system' ? (colorScheme === 'dark' ? 'dark' : 'light') : mode;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setColorScheme(mode);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, [mode, setColorScheme]);
 
   return (
     <View
       style={[
-        config[colorScheme!],
+        config[resolvedMode],
         { flex: 1, height: '100%', width: '100%' },
         props.style,
       ]}

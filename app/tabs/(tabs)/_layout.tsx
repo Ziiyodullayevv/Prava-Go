@@ -1,87 +1,35 @@
 import React from "react";
 import { Tabs } from "expo-router";
-import { useClientOnlyValue } from "@/components/useClientOnlyValue";
-import {
-	Home,
-	Clock,
-	Settings,
-	CarFront,
-} from "lucide-react-native";
-import { Colors } from "@/constants/Colors";
-import { useAppTheme } from "@/contexts/theme-context";
-
-type LucideIconComponent = React.ComponentType<{
-	size?: number;
-	color?: string;
-	strokeWidth?: number;
-	style?: any;
-}>;
-
-function TabIcon({
-	Icon,
-	focused,
-}: {
-	Icon: LucideIconComponent;
-	focused: boolean;
-}) {
-	const { colorMode } = useAppTheme();
-	const isDark = colorMode === "dark";
-	const defaultIcon = isDark ? Colors.dark.text : Colors.light.text;
-	const activeIcon = isDark ? Colors.dark.icon : Colors.light.icon;
-
-	return (
-		<Icon
-			size={28}
-			color={focused ? activeIcon : defaultIcon}
-			strokeWidth={focused ? 2 : 1.5}
-			style={{ marginBottom: 0, marginTop: 17 }}
-		/>
-	);
-}
+import { CustomTabBar } from "@/components/CustomTabBar";
+import { Award, Home, Settings } from "lucide-react-native";
+import { useI18n } from "@/locales/i18n-provider";
 
 export default function TabLayout() {
-	const { colorMode } = useAppTheme();
-	const isDark = colorMode === "dark";
-	const backgroundColor =
-		isDark ? Colors.dark.tabsBackground : Colors.light.tabsBackground;
+	const { t } = useI18n();
 
 	return (
 		<Tabs
 			screenOptions={{
-				headerShown: useClientOnlyValue(true, false),
-				tabBarShowLabel: false,
-				tabBarStyle: {
-					backgroundColor,
-					borderTopColor: "#687076",
-					paddingBottom: 12,
-				},
+				headerShown: false,
 			}}
+			tabBar={(props) => <CustomTabBar {...props} />}
 		>
 			<Tabs.Screen
 				name="home"
 				options={{
-					headerShown: false,
-
-					tabBarIcon: ({ focused }) => (
-						<TabIcon Icon={Home} focused={focused} />
+					title: t("tabs.home", "Bosh sahifa"),
+					tabBarIcon: ({ color, size }) => (
+						<Home size={size} color={color} strokeWidth={2.2} />
 					),
 				}}
 			/>
 
 			<Tabs.Screen
-				name="car"
+				name="practice"
 				options={{
-					tabBarIcon: ({ focused }) => (
-						<TabIcon Icon={CarFront} focused={focused} />
-					),
-				}}
-			/>
-
-			<Tabs.Screen
-				name="history"
-				options={{
-					tabBarIcon: ({ focused }) => (
-						<TabIcon Icon={Clock} focused={focused} />
+					title: t("tabs.practice", "Mashq"),
+					tabBarIcon: ({ color, size }) => (
+						<Award size={size} color={color} strokeWidth={2.2} />
 					),
 				}}
 			/>
@@ -89,8 +37,9 @@ export default function TabLayout() {
 			<Tabs.Screen
 				name="settings"
 				options={{
-					tabBarIcon: ({ focused }) => (
-						<TabIcon Icon={Settings} focused={focused} />
+					title: t("tabs.settings", "Sozlamalar"),
+					tabBarIcon: ({ color, size }) => (
+						<Settings size={size} color={color} strokeWidth={2.2} />
 					),
 				}}
 			/>

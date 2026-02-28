@@ -15,18 +15,19 @@ import { Stack } from "expo-router";
 
 export default function AppLayout() {
 	const { colorMode, isReady } = useAppTheme();
-  if (!isReady) return null;
+	if (!isReady) return null;
 
-  const isDark = colorMode === "dark";
-  const bg = isDark ? Colors.dark.background : Colors.light.background;
+	const isDark = colorMode === "dark";
+	const bg = isDark ? Colors.dark.background : Colors.light.background;
 
 	return (
-		<Stack  screenOptions={{
-        contentStyle: { backgroundColor: bg },
-      }}>
+		<Stack
+			screenOptions={{
+				contentStyle: { backgroundColor: bg },
+			}}
+		>
 			<Stack.Screen options={{ headerShown: false }} name="(tabs)" />
 			<Stack.Screen options={{ headerShown: false }} name="(questions)" />
-			<Stack.Screen options={{ headerShown: false }} name="user-profile" />
 		</Stack>
 	);
 }
