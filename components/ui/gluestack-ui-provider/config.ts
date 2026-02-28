@@ -4,10 +4,11 @@ export const config = {
 	light: vars({
 		"--primary": "22 22 22", // rgb(22,22,22)
 		"--primary-foreground": "250 250 250", // rgb(250, 250, 250)
-		"--card": "243 242 244", // rgb(243, 242, 244)
+		"--card": "260 260 260", // rgb(250 250 250)
+		"--custom": "245 245 245", // rgb(240 240 240),
 		"--secondary": "245 245 245", // rgb(245, 245, 245)
 		"--secondary-foreground": "23 23 23", // rgb(23, 23, 23)
-		"--background": "255 255 255", // rgb(22, 22, 22)
+		"--background": "242 242 242", // rgb(22, 22, 22)
 		"--popover": "255 255 255", // rgb(255, 255, 255)
 		"--popover-foreground": "10 10 10", // rgb(10, 10, 10)
 		"--muted": "245 245 245", // rgb(245, 245, 245)
@@ -19,11 +20,13 @@ export const config = {
 		"--ring": "212 212 212", // rgb(212, 212, 212)
 		"--accent": "247 247 247", // rgb(247, 247, 247)
 		"--accent-foreground": "52 52 52", // rgb(52, 52, 52)
+		"--brand": "81 167 118", //rgb(81, 167, 118)
 	}),
 	dark: vars({
 		"--primary-foreground": "23 23 23", // rgb(23, 23, 23)
 		"--primary": "255 245 245", // rgb(255, 245, 245)
-		"--card": "37 37 37", // rgb(37, 37, 37)  ✅ vergulni olib tashla
+		"--card": "37 37 37", // rgb(37, 37, 37) , ✅ vergulni olib tashla
+		"--custom": "55 55 55", // rgb(45, 45, 45), ✅ vergulni olib tashla
 		"--secondary": "38 38 38", // rgb(38, 38, 38)
 		"--secondary-foreground": "250 250 250", // rgb(250, 250, 250)
 		"--background": "23 24 24", // rgb(23, 24, 24)
@@ -38,5 +41,7 @@ export const config = {
 		"--accent": "38 38 38", // rgb(38, 38, 38)
 		"--accent-foreground": "250 250 250", // rgb(250, 250, 250)
 		"--ring": "115 115 115", // rgb(115, 115, 115)
+		"--brand": "112 232 118", // rgb(112, 232, 118)
+		"--mistake": "#9f1239",
 	}),
 };

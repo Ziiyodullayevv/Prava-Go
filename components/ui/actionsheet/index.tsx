@@ -253,9 +253,10 @@ type IActionsheetIconProps = VariantProps<typeof actionsheetIconStyle> &
 const Actionsheet = React.forwardRef<
   React.ComponentRef<typeof UIActionsheet>,
   IActionsheetProps
->(function Actionsheet({ className, ...props }, ref) {
+>(function Actionsheet({ className, useRNModal = false, ...props }, ref) {
   return (
     <UIActionsheet
+      useRNModal={useRNModal}
       className={actionsheetStyle({
         class: className,
       })}

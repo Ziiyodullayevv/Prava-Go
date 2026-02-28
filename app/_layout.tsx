@@ -1,77 +1,94 @@
 import "@/global.css";
+import "react-native-gesture-handler";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { GluestackUIProvider } from "@/components/ui/gluestack-ui-provider";
 import {
-  DarkTheme,
-  DefaultTheme,
-  ThemeProvider as NavThemeProvider,
+	DarkTheme,
+	DefaultTheme,
+	ThemeProvider as NavThemeProvider,
 } from "@react-navigation/native";
 import {
-  ThemeProvider as AppThemeProvider,
-  useAppTheme,
+	ThemeProvider as AppThemeProvider,
+	useAppTheme,
 } from "@/contexts/theme-context";
+import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { useFonts } from "expo-font";
 import { Slot } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import * as SystemUI from "expo-system-ui";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Colors } from "@/constants/Colors";
+import { I18nProvider } from "@/locales/i18n-provider";
 
 export { ErrorBoundary } from "expo-router";
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
-    ...FontAwesome.font,
-  });
+	const [loaded, error] = useFonts({
+		SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
+		...FontAwesome.font,
+	});
 
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+	useEffect(() => {
+		if (error) throw error;
+	}, [error]);
 
-  return (
-    <AppThemeProvider>
-      <RootLayoutNav fontsLoaded={loaded} />
-    </AppThemeProvider>
-  );
+	return (
+		<AppThemeProvider>
+			<I18nProvider>
+				<AuthProvider>
+					<RootLayoutNav fontsLoaded={loaded} />
+				</AuthProvider>
+			</I18nProvider>
+		</AppThemeProvider>
+	);
 }
 
 function RootLayoutNav({ fontsLoaded }: { fontsLoaded: boolean }) {
-  const { colorMode, isReady } = useAppTheme();
+	const { colorMode, themePreference, isReady } = useAppTheme();
+	const { isLoading: authLoading } = useAuth();
 
-  const isDark = colorMode === "dark";
-  const bg = isDark ? Colors.dark.background : Colors.light.background;
+	const isDark = colorMode === "dark";
+	const bg = isDark ? Colors.dark.background : Colors.light.background;
 
-  // 1) Android transition paytida ko‘rinadigan "window background" ni theme ga moslab qo‘yadi
-  useEffect(() => {
-    SystemUI.setBackgroundColorAsync(bg).catch(() => {});
-  }, [bg]);
+	// Android "window background" ni theme ga moslab turadi
+	useEffect(() => {
+		SystemUI.setBackgroundColorAsync(bg).catch(() => {});
+	}, [bg]);
 
-  // 2) Splash faqat font + theme ready bo‘lganda yopilsin (flash bo‘lmasin)
-  useEffect(() => {
-    if (fontsLoaded && isReady) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded, isReady]);
+	// Splash faqat font + theme ready bo‘lganda yopilsin
+	useEffect(() => {
+		if (fontsLoaded && isReady && !authLoading) {
+			SplashScreen.hideAsync().catch(() => {});
+		}
+	}, [fontsLoaded, isReady, authLoading]);
 
-  if (!fontsLoaded || !isReady) return null;
+	if (!fontsLoaded || !isReady || authLoading) return null;
 
-  const navTheme = isDark
-    ? { ...DarkTheme, colors: { ...DarkTheme.colors, background: bg, card: bg } }
-    : {
-        ...DefaultTheme,
-        colors: { ...DefaultTheme.colors, background: bg, card: bg },
-      };
+	const navTheme = isDark
+		? {
+				...DarkTheme,
+				colors: { ...DarkTheme.colors, background: bg, card: bg },
+			}
+		: {
+				...DefaultTheme,
+				colors: { ...DefaultTheme.colors, background: bg, card: bg },
+			};
 
-  return (
-    <NavThemeProvider value={navTheme}>
-      <GluestackUIProvider mode={colorMode}>
-        <StatusBar style={isDark ? "light" : "dark"} />
-        <Slot />
-      </GluestackUIProvider>
-    </NavThemeProvider>
-  );
+	return (
+		<GestureHandlerRootView style={{ flex: 1, backgroundColor: bg }}>
+			<NavThemeProvider value={navTheme}>
+				<GluestackUIProvider
+					mode={themePreference}
+					style={{ backgroundColor: bg }}
+				>
+					<StatusBar style={'auto'} />
+					<Slot />
+				</GluestackUIProvider>
+			</NavThemeProvider>
+		</GestureHandlerRootView>
+	);
 }
