@@ -1,14 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { ActivityIndicator, Pressable, ScrollView } from "react-native";
+import { useLocalSearchParams, useRouter, type Href } from "expo-router";
+import { useNavigation } from "@react-navigation/native";
+import { LinearGradient } from "expo-linear-gradient";
 import {
-	BookA,
+	AlertTriangle,
 	BookmarkPlus,
 	ChevronLeft,
 	ChevronRight,
+	CircleHelp,
 	Lightbulb,
 	Power,
 	Search,
+	X,
 } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -21,6 +25,7 @@ import {
 	BottomSheetPortal,
 	BottomSheetScrollView,
 } from "@/components/ui/bottomsheet";
+import { GradientIconFrame } from "@/components/GradientIconFrame";
 import { Box } from "@/components/ui/box";
 import { Button, ButtonSpinner, ButtonText } from "@/components/ui/button";
 import { Heading } from "@/components/ui/heading";
@@ -38,7 +43,6 @@ import {
 	ModalBackdrop,
 	ModalBody,
 	ModalContent,
-	ModalFooter,
 } from "@/components/ui/modal";
 import { Text } from "@/components/ui/text";
 import { useAppTheme } from "@/contexts/theme-context";
@@ -50,24 +54,28 @@ import {
 	type AnswerOptionStatus,
 	type QuestionNavigatorItem,
 } from "@/features/theory/components";
-import { completeTheorySession } from "@/features/theory/api";
 import {
-	loadBookmarkedQuestionIds,
-	toggleBookmarkedQuestion,
-} from "@/features/theory/bookmarks";
+	useDeleteQuizSavedQuestionMutation,
+	useAbandonQuizSessionMutation,
+	useQuizSavedQuestionsQuery,
+	useSaveQuizQuestionMutation,
+	useSubmitQuizSessionMutation,
+	type QuizQuestion,
+	type SubmitQuizAnswerInput,
+} from "@/features/quiz/api";
 import {
-	enqueueSessionCompletion,
-	removeQueuedSessionCompletion,
-} from "@/features/theory/offline-queue";
-import {
+	ANONYMOUS_USER_ID,
 	AUTO_ADVANCE_DELAY_MS,
 	MIN_TEST_SECONDS,
 	SECONDS_PER_QUESTION,
 } from "@/features/theory/constants";
-import { useTheorySession } from "@/features/theory/hooks";
+import { useTheorySession, useTheoryTestSettings } from "@/features/theory/hooks";
 import type { SessionQuestion } from "@/features/theory/types";
 import { useI18n } from "@/locales/i18n-provider";
-import { Divider } from "@/components/ui/divider";
+import {
+	getFloatingActionBottomOffset,
+	getFloatingActionContentPadding,
+} from "@/lib/safe-area";
 
 function clamp(n: number, min: number, max: number) {
 	return Math.min(max, Math.max(min, n));
@@ -119,8 +127,7 @@ function mergeSessionQuestions(
 	});
 }
 
-const unansweredExplanationImage = require("../../../../../assets/images/practice/is-answer.png");
-const MOCK_EXAM_SECONDS = 25 * 60;
+const DEFAULT_TEST_SECONDS = 20 * 60;
 const MOCK_EXAM_WRONG_LIMIT = 3;
 const MARATHON_SECONDS_BY_QUESTION_COUNT: Record<number, number> = {
 	50: 60 * 60,
@@ -142,22 +149,44 @@ function getMarathonDurationSeconds(questionCount: number) {
 
 export default function TheorySessionTestScreen() {
 	const router = useRouter();
+	const navigation = useNavigation();
 	const insets = useSafeAreaInsets();
 	const { colorMode } = useAppTheme();
 	const { user } = useAuth();
 	const { language, t } = useI18n();
+	const effectiveUserId = user?.id ?? ANONYMOUS_USER_ID;
 	const isDark = colorMode === "dark";
 	const palette = isDark ? Colors.dark : Colors.light;
 	const primaryForegroundColor = isDark ? "#171717" : "#FAFAFA";
-	const params = useLocalSearchParams<{ sessionId?: string }>();
+	const savedAccentColor = "#ff9f2f";
+	const savedIconColor = isDark ? "#ffffff" : "#111111";
+	const bottomActionOffset = getFloatingActionBottomOffset(insets.bottom);
+	const savedButtonGradientColors: [string, string, string] = [
+		"#ffc85a",
+		"#ff9f2f",
+		"#ff784b",
+	];
+	const params = useLocalSearchParams<{
+		sessionId?: string;
+		auto?: string;
+		slug?: string;
+		title?: string;
+		tokenCost?: string;
+	}>();
 	const sessionId =
 		typeof params.sessionId === "string" ? params.sessionId : "";
+	const routeAutoAdvance = useMemo(() => {
+		if (params.auto === "1") return true;
+		if (params.auto === "0") return false;
+		return null;
+	}, [params.auto]);
 
 	const { session, isLoading, error, reload } = useTheorySession(
-		user?.id,
+		effectiveUserId,
 		sessionId,
 		language,
 	);
+	const { settings: persistedSettings } = useTheoryTestSettings();
 
 	const [questions, setQuestions] = useState<SessionQuestion[]>([]);
 	const [currentIndex, setCurrentIndex] = useState(0);
@@ -166,17 +195,19 @@ export default function TheorySessionTestScreen() {
 	const [scoreIncorrect, setScoreIncorrect] = useState(0);
 	const [isFinalizing, setIsFinalizing] = useState(false);
 	const [finalizeError, setFinalizeError] = useState("");
+	const [exitError, setExitError] = useState("");
 	const [isExitModalOpen, setIsExitModalOpen] = useState(false);
 	const [isUnansweredModalOpen, setIsUnansweredModalOpen] = useState(false);
 	const [firstUnansweredIndex, setFirstUnansweredIndex] = useState<
 		number | null
 	>(null);
-	const [bookmarkedQuestionIds, setBookmarkedQuestionIds] = useState<Set<string>>(
-		new Set(),
-	);
-	const [isBookmarkUpdating, setIsBookmarkUpdating] = useState(false);
 	const explanationSheetRef = useRef<BottomSheetController | null>(null);
 	const didNavigateResultRef = useRef(false);
+	const abandonQuizSessionMutation = useAbandonQuizSessionMutation();
+	const submitQuizSessionMutation = useSubmitQuizSessionMutation();
+	const savedQuestionsQuery = useQuizSavedQuestionsQuery(Boolean(user?.id));
+	const saveQuestionMutation = useSaveQuizQuestionMutation();
+	const deleteSavedQuestionMutation = useDeleteQuizSavedQuestionMutation();
 	const autoNextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const answeredQuestionIdsRef = useRef<Set<string>>(new Set());
 	const questionsRef = useRef<SessionQuestion[]>([]);
@@ -223,14 +254,16 @@ export default function TheorySessionTestScreen() {
 			);
 
 			const duration =
-				session.mode === "mock_exam"
-					? MOCK_EXAM_SECONDS
-					: session.mode === "marathon"
-						? getMarathonDurationSeconds(mergedQuestions.length)
-					: Math.max(
-							MIN_TEST_SECONDS,
-							mergedQuestions.length * SECONDS_PER_QUESTION,
-						);
+				typeof session.timeLimitMinutes === "number" && session.timeLimitMinutes > 0
+					? session.timeLimitMinutes * 60
+					: session.mode === "mock_exam"
+						? DEFAULT_TEST_SECONDS
+						: session.mode === "marathon"
+							? getMarathonDurationSeconds(mergedQuestions.length)
+							: Math.max(
+									MIN_TEST_SECONDS,
+									mergedQuestions.length * SECONDS_PER_QUESTION,
+								);
 			setSecondsLeft(duration);
 			didNavigateResultRef.current = false;
 			hydratedSessionIdRef.current = session.id;
@@ -259,46 +292,49 @@ export default function TheorySessionTestScreen() {
 	}, []);
 
 	useEffect(() => {
-		let isCancelled = false;
+		const unsubscribe = navigation.addListener("beforeRemove", (event) => {
+			const actionType = event.data.action?.type;
+			const isBackAction =
+				actionType === "GO_BACK" ||
+				actionType === "POP" ||
+				actionType === "POP_TO_TOP";
 
-		const loadBookmarks = async () => {
-			if (!user?.id) {
-				if (!isCancelled) setBookmarkedQuestionIds(new Set());
-				return;
-			}
+			if (!isBackAction) return;
+			event.preventDefault();
+			setExitError("");
+			setIsExitModalOpen(true);
+		});
 
-			try {
-				const ids = await loadBookmarkedQuestionIds(user.id);
-				if (isCancelled) return;
-				setBookmarkedQuestionIds(new Set(ids));
-			} catch {
-				if (isCancelled) return;
-				setBookmarkedQuestionIds(new Set());
-			}
-		};
-
-		loadBookmarks().catch(() => {});
-
-		return () => {
-			isCancelled = true;
-		};
-	}, [user?.id]);
+		return unsubscribe;
+	}, [navigation]);
 
 	const totalQuestions = questions.length;
 	const safeIndex = clamp(currentIndex, 0, Math.max(totalQuestions - 1, 0));
 	const currentQuestion = questions[safeIndex] ?? null;
+	const exitHref = useMemo<Href>(() => {
+		const routeSlug = typeof params.slug === "string" ? params.slug : "";
+		if (routeSlug === "random") {
+			return {
+				pathname: "/tabs/(questions)/marathon",
+				params: { mode: "random", count: "10" },
+			};
+		}
+		if (routeSlug === "marathon" || session?.mode === "marathon") {
+			return {
+				pathname: "/tabs/(questions)/marathon",
+				params: { mode: "marathon" },
+			};
+		}
+		if (!session) return "/tabs/(tabs)/home";
+		if (session.topicSlug) {
+			return {
+				pathname: "/tabs/(questions)/theory/[slug]",
+				params: { slug: session.topicSlug },
+			};
+		}
+		return "/tabs/(questions)/theory";
+	}, [params.slug, session]);
 	const isMockExam = session?.mode === "mock_exam";
-	const isMarathon = session?.mode === "marathon";
-	const isMistakesPractice = session?.mode === "mistakes_practice";
-	const passMark = isMockExam
-		? clamp(
-				Math.round(
-					((Math.max(totalQuestions, 1) - 2) / Math.max(totalQuestions, 1)) * 100,
-				),
-				0,
-				100,
-			)
-		: 80;
 	const answeredCount = useMemo(
 		() => questions.filter((item) => Boolean(item.selectedOptionId)).length,
 		[questions],
@@ -309,9 +345,45 @@ export default function TheorySessionTestScreen() {
 			? currentQuestion.explanation.trim()
 			: "";
 	const hasCurrentAnswer = Boolean(currentQuestion?.selectedOptionId);
-	const isCurrentQuestionBookmarked = Boolean(
-		currentQuestion && bookmarkedQuestionIds.has(currentQuestion.questionId),
+	const savedQuestionIds = useMemo(
+		() =>
+			new Set(
+				(savedQuestionsQuery.data ?? []).map((item) => String(item.question.id)),
+			),
+		[savedQuestionsQuery.data],
 	);
+	const isCurrentQuestionSaved = Boolean(
+		currentQuestion && savedQuestionIds.has(currentQuestion.questionId),
+	);
+	const isAbandoningSession = abandonQuizSessionMutation.isPending;
+
+	const handleExitTest = async () => {
+		if (isAbandoningSession) return;
+		setExitError("");
+
+		if (!session) {
+			setIsExitModalOpen(false);
+			router.replace(exitHref);
+			return;
+		}
+
+		try {
+			await abandonQuizSessionMutation.mutateAsync(session.id);
+			setIsExitModalOpen(false);
+			router.replace(exitHref);
+		} catch (err) {
+			setExitError(
+				getErrorMessage(
+					err,
+					t(
+						"theory.session.abandonError",
+						"Something went wrong while leaving the test.",
+					),
+				),
+			);
+		}
+	};
+
 	const questionImages = useMemo(
 		() =>
 			currentQuestion?.imageUrl
@@ -328,7 +400,7 @@ export default function TheorySessionTestScreen() {
 	const goToResult = async (
 		reason: "completed" | "timeout" | "mistake_limit",
 	) => {
-		if (!user?.id || !session || didNavigateResultRef.current) return;
+		if (!session || didNavigateResultRef.current) return;
 		didNavigateResultRef.current = true;
 		setFinalizeError("");
 		setIsFinalizing(true);
@@ -348,22 +420,26 @@ export default function TheorySessionTestScreen() {
 				(item) => item.isCorrect,
 			).length;
 			const localIncorrect = answeredPayload.length - localCorrect;
+			const submitAnswers: SubmitQuizAnswerInput[] = answeredPayload.map(
+				(item) => {
+					const question = questions.find(
+						(candidate) => candidate.questionId === item.questionId,
+					);
+					const correctOption = question?.options.find((option) => option.isCorrect);
 
-			// Queue remote sync payload first.
-			await enqueueSessionCompletion({
-				kind: "complete_session",
-				userId: user.id,
-				sessionId: session.id,
-				answers: answeredPayload,
-				queuedAt: new Date().toISOString(),
-			});
+					return {
+						question_id: Number(item.questionId),
+						choice_id: Number(item.selectedOptionId),
+						correct_choice_id: Number(correctOption?.id ?? item.selectedOptionId),
+						status: item.isCorrect,
+					};
+				},
+			);
 
-			// Apply local session/stat updates immediately so practice stats refresh on first back.
-			await completeTheorySession({
-				userId: user.id,
+			await submitQuizSessionMutation.mutateAsync({
 				sessionId: session.id,
-				answers: answeredPayload,
-				syncRemote: false,
+				answers: submitAnswers,
+				finishedAt: new Date().toISOString(),
 			});
 
 			setScoreCorrect(localCorrect);
@@ -373,42 +449,14 @@ export default function TheorySessionTestScreen() {
 				pathname: "/tabs/(questions)/theory/[slug]/result",
 				params: {
 					sessionId: session.id,
-					slug: session.topicSlug
-						?? (
-							isMockExam
-								? "mock-exam"
-								: isMarathon
-									? "marathon"
-									: isMistakesPractice
-										? "mistakes"
-										: "theory"
-						),
-					title:
-						session.topicTitle ??
-						(isMockExam
-							? t("practice.mockExam", "Mock Exam")
-							: isMarathon
-								? t("practice.explore.marathon.title", "Marathon")
-								: isMistakesPractice
-									? t("practice.explore.mistakes.title", "Mistakes")
-							: t("theory.title", "Theory")),
-					correct: String(localCorrect),
-					total: String(totalQuestions),
-					answered: String(answeredCount),
-					passMark: String(passMark),
+					slug: session.topicSlug ?? params.slug ?? "theory",
+					title: session.topicTitle ?? params.title ?? t("theory.title", "Theory"),
 					reason,
+					...(params.auto ? { auto: params.auto } : {}),
+					...(params.tokenCost ? { tokenCost: params.tokenCost } : {}),
 				},
 			});
 
-			// Non-blocking best-effort remote sync. Queue item is removed on success.
-			void completeTheorySession({
-				userId: user.id,
-				sessionId: session.id,
-				answers: answeredPayload,
-				syncRemote: true,
-			})
-				.then(() => removeQueuedSessionCompletion(user.id, session.id))
-				.catch(() => {});
 		} catch (err) {
 			didNavigateResultRef.current = false;
 			const message = getErrorMessage(
@@ -429,21 +477,6 @@ export default function TheorySessionTestScreen() {
 		if (!session || totalQuestions === 0) return;
 		goToResult("timeout").catch(() => {});
 	}, [secondsLeft, session, totalQuestions]);
-
-	useEffect(() => {
-		if (!session || totalQuestions === 0) return;
-		if (answeredCount !== totalQuestions) return;
-		if (!isLast || !hasCurrentAnswer) return;
-		if (isFinalizing || didNavigateResultRef.current) return;
-		goToResult("completed").catch(() => {});
-	}, [
-		session,
-		totalQuestions,
-		answeredCount,
-		isLast,
-		hasCurrentAnswer,
-		isFinalizing,
-	]);
 
 	useEffect(() => {
 		if (!session || totalQuestions === 0) return;
@@ -493,7 +526,9 @@ export default function TheorySessionTestScreen() {
 			setScoreIncorrect((prev) => prev + 1);
 		}
 
-		if (session.settings.autoAdvance && safeIndex < totalQuestions - 1) {
+		const shouldAutoAdvance =
+			routeAutoAdvance ?? persistedSettings.autoAdvance ?? session.settings.autoAdvance;
+		if (shouldAutoAdvance && safeIndex < totalQuestions - 1) {
 			if (autoNextTimerRef.current) {
 				clearTimeout(autoNextTimerRef.current);
 			}
@@ -504,29 +539,25 @@ export default function TheorySessionTestScreen() {
 		}
 	};
 
-	const handleToggleBookmark = async () => {
-		if (!user?.id || !currentQuestion) return;
-		if (isBookmarkUpdating) return;
-		setIsBookmarkUpdating(true);
-		const targetQuestionId = currentQuestion.questionId;
+	const handleToggleSavedQuestion = () => {
+		if (!currentQuestion) return;
 
-		try {
-			const { isBookmarked } = await toggleBookmarkedQuestion(
-				user.id,
-				targetQuestionId,
-			);
-			setBookmarkedQuestionIds((prev) => {
-				const next = new Set(prev);
-				if (isBookmarked) {
-					next.add(targetQuestionId);
-				} else {
-					next.delete(targetQuestionId);
-				}
-				return next;
-			});
-		} finally {
-			setIsBookmarkUpdating(false);
+		if (isCurrentQuestionSaved) {
+			deleteSavedQuestionMutation.mutate(currentQuestion.questionId);
+			return;
 		}
+
+		const optimisticQuestion: QuizQuestion = {
+			id: Number(currentQuestion.questionId),
+			text_uzl: currentQuestion.prompt,
+			category: session?.topicId ? Number(session.topicId) : null,
+			category_name: session?.topicTitle ?? null,
+		};
+
+		saveQuestionMutation.mutate({
+			questionId: currentQuestion.questionId,
+			question: optimisticQuestion,
+		});
 	};
 
 	const handleNext = async () => {
@@ -619,34 +650,43 @@ export default function TheorySessionTestScreen() {
 
 	return (
 		<BottomSheet ref={explanationSheetRef} snapToIndex={0}>
-				<Box className="flex-1 bg-background pt-safe">
-					<Box className="mt-2">
-						<Box className="flex-row px-4 items-center justify-between">
-							<Pressable onPress={() => setIsExitModalOpen(true)}>
-								<Box className="h-12 w-12 rounded-full bg-card items-center justify-center shadow-hard-5">
-									<Power size={22} strokeWidth={2} color={palette.text} />
-								</Box>
-							</Pressable>
+			<Box className="flex-1 bg-background pt-safe">
+				<Box className="mt-2">
+					<Box className="flex-row px-4 items-center justify-between">
+						<Pressable onPress={() => setIsExitModalOpen(true)}>
+							<GradientIconFrame
+								size={48}
+								borderRadius={999}
+								innerBorderRadius={999}
+							>
+								<Power size={22} strokeWidth={2} color={palette.text} />
+							</GradientIconFrame>
+						</Pressable>
 
-							<Box className="items-center">
-								<Heading className="text-lg font-semibold">
-									{formatClock(secondsLeft)}
-								</Heading>
-								<Text className="text-xs text-muted-foreground">
-									{totalQuestions} {t("common.questionsWord", "questions")}
-								</Text>
-							</Box>
-
-							<Pressable onPress={() => explanationSheetRef.current?.open()}>
-								<Box className="h-12 w-12 rounded-full bg-card items-center justify-center shadow-hard-5">
-									<Lightbulb
-										size={20}
-										strokeWidth={2}
-										color={currentExplanation ? palette.tint : palette.text}
-									/>
-								</Box>
-							</Pressable>
+						<Box className="items-center">
+							<Heading className="text-lg font-semibold">
+								{formatClock(secondsLeft)}
+							</Heading>
+							<Text className="text-xs text-muted-foreground">
+								{totalQuestions} {t("common.questionsWord", "questions")}
+							</Text>
 						</Box>
+
+						<Pressable onPress={() => explanationSheetRef.current?.open()}>
+							<GradientIconFrame
+								size={48}
+								borderRadius={999}
+								innerBorderRadius={999}
+								shine={Boolean(currentExplanation)}
+							>
+								<Lightbulb
+									size={20}
+									strokeWidth={2}
+									color={currentExplanation ? savedAccentColor : palette.text}
+								/>
+							</GradientIconFrame>
+						</Pressable>
+					</Box>
 
 					<QuestionNavigator
 						items={navigatorItems}
@@ -659,7 +699,7 @@ export default function TheorySessionTestScreen() {
 					showsVerticalScrollIndicator={false}
 					contentContainerStyle={{
 						flexGrow: 1,
-						paddingBottom: Math.max(insets.bottom, 12) + 84,
+						paddingBottom: getFloatingActionContentPadding(insets.bottom, 132),
 					}}
 				>
 					<Box className="bg-card flex-1 p-4">
@@ -749,59 +789,76 @@ export default function TheorySessionTestScreen() {
 					</Box>
 				</ScrollView>
 
-				<Box
-					className="absolute left-0 right-0 bottom-0 px-4 pt-3 bg-card border-t border-border/40"
-					style={{ paddingBottom: Math.max(insets.bottom, 12) }}
-				>
-					<Box className="flex-row items-center justify-between mb-2 px-1">
-						<Text className="text-sm text-muted-foreground">
-							{t("theory.correct", "Correct")}: {scoreCorrect}
-						</Text>
-						<Text className="text-sm text-muted-foreground">
-							{t("theory.incorrect", "Incorrect")}: {scoreIncorrect}
-						</Text>
-					</Box>
+				<LinearGradient
+					pointerEvents="none"
+					colors={
+						isDark
+							? ["rgba(0,0,0,0)", "rgba(0,0,0,0.4)", "rgba(0,0,0,0.78)"]
+							: [
+									"rgba(255,255,255,0)",
+									"rgba(255,255,255,0.5)",
+									"rgb(255,255,255)",
+								]
+					}
+					start={{ x: 0.5, y: 0.16 }}
+					end={{ x: 0.5, y: 1 }}
+					style={{
+						position: "absolute",
+						left: 0,
+						right: 0,
+						bottom: 0,
+						height: 132,
+					}}
+				/>
 
+				<Box
+					className="absolute left-0 right-0 px-7"
+					style={{ bottom: bottomActionOffset }}
+				>
 					<Box className="flex-row items-center justify-between gap-3">
 						<Box className="flex-row items-center gap-2">
 							<Pressable
 								onPress={() => setCurrentIndex((prev) => Math.max(prev - 1, 0))}
 								disabled={isFinalizing || safeIndex === 0}
 							>
-								<Box
-									className={[
-										"h-12 w-12 border-border border rounded-full bg-card dark:bg-background dark:shadow-sm dark:shadow-white/5 items-center justify-center",
-										isFinalizing || safeIndex === 0 ? "opacity-40" : "",
-									].join(" ")}
+								<GradientIconFrame
+									size={48}
+									borderRadius={999}
+									innerBorderRadius={999}
+									style={isFinalizing || safeIndex === 0 ? { opacity: 0.4 } : undefined}
 								>
 									<ChevronLeft size={20} color={palette.text} />
-								</Box>
+								</GradientIconFrame>
 							</Pressable>
 
 							<Pressable
-								onPress={handleToggleBookmark}
-								disabled={isFinalizing || isBookmarkUpdating || !currentQuestion}
+								onPress={handleToggleSavedQuestion}
+								disabled={
+									isFinalizing ||
+									!currentQuestion
+								}
 							>
-								<Box
-									className={[
-										"h-12 w-12 dark:bg-background dark:shadow-sm dark:shadow-white border-border border rounded-full bg-card shadow-hard-2 items-center justify-center",
-										isCurrentQuestionBookmarked
-											? "border-brand bg-brand/10"
-											: "",
-										isFinalizing || isBookmarkUpdating || !currentQuestion
-											? "opacity-40"
-											: "",
-									].join(" ")}
+								<GradientIconFrame
+									size={48}
+									borderRadius={999}
+									innerBorderRadius={999}
+									colors={
+										isCurrentQuestionSaved
+											? savedButtonGradientColors
+											: undefined
+									}
+									innerBackgroundColor={
+										isCurrentQuestionSaved ? savedAccentColor : undefined
+									}
+									style={
+										isFinalizing || !currentQuestion ? { opacity: 0.4 } : undefined
+									}
 								>
 									<BookmarkPlus
 										size={20}
-										color={
-											isCurrentQuestionBookmarked
-												? palette.tint
-												: palette.text
-										}
+										color={isCurrentQuestionSaved ? savedIconColor : palette.text}
 									/>
-								</Box>
+								</GradientIconFrame>
 							</Pressable>
 						</Box>
 
@@ -872,24 +929,14 @@ export default function TheorySessionTestScreen() {
 									</Text>
 								</Box>
 							) : (
-								<Box className="w-full items-center justify-center px-1 py-3">
-									<Box className="w-full p-5 items-center">
-										<Image
-											source={unansweredExplanationImage}
-											alt={t(
-												"theory.explanationUnavailable",
-												"Explanation appears after you answer.",
-											)}
-											className="h-[170px] w-[170px] rounded-3xl"
-											resizeMode="contain"
-										/>
-										<Text className="mt-4 text-center text-base">
-											{t(
-												"theory.explanationUnavailable",
-												"Izoh javob tanlangandan keyin ko'rinadi.",
-											)}
-										</Text>
-									</Box>
+								<Box className="w-full items-center justify-center px-1 py-8">
+									<CircleHelp size={72} color="#94a3b8" strokeWidth={1.4} />
+									<Text className="mt-4 text-center text-base text-muted-foreground">
+										{t(
+											"theory.explanationUnavailable",
+											"Izoh javob tanlangandan keyin ko'rinadi.",
+										)}
+									</Text>
 								</Box>
 							)}
 						</BottomSheetScrollView>
@@ -901,78 +948,122 @@ export default function TheorySessionTestScreen() {
 					onClose={() => setIsUnansweredModalOpen(false)}
 					size="lg"
 				>
-					<ModalBackdrop className="bg-foreground/20 !backdrop-blur-2xl" />
-					<ModalContent className="rounded-[30px] bg-background p-5">
-						<ModalBody className="mt-3 text-center mb-5">
-							<Image
-								className="mx-auto"
-								source={require("../../../../../assets/images/alert.webp")}
-								alt=""
-							/>
-							<Divider className="mx-4 my-4" />
-							<Heading className="text-center" size="md">
+					<ModalBackdrop className="bg-black/45" />
+					<ModalContent className="rounded-[34px] border-0 bg-background px-6 pt-6 pb-6">
+						<Pressable
+							className="absolute right-5 top-5 z-10"
+							onPress={() => setIsUnansweredModalOpen(false)}
+						>
+							<X size={24} color="#8f8f8f" />
+						</Pressable>
+
+						<ModalBody className="mt-0 mb-0 pt-8 pb-0">
+							<Box className="items-center">
+								<Box className="h-20 w-20 rounded-full border-2 border-amber-300 bg-amber-100/70 items-center justify-center">
+									<AlertTriangle size={34} color="#d97706" strokeWidth={2.4} />
+								</Box>
+
+								<Heading className="mt-8 text-center text-2xl font-bold">
 								{t("theory.alert.unansweredTitle", "Questions remain")}
 							</Heading>
-							<Text className="text-base text-center mt-1 text-muted-foreground">
-								{`${t("theory.alert.unansweredMessagePrefix", "Unanswered question:")} ${(firstUnansweredIndex ?? 0) + 1}`}
-							</Text>
+								<Text className="mt-4 text-center text-base leading-6 text-muted-foreground">
+									{`${t("theory.alert.unansweredMessagePrefix", "Unanswered question:")} ${(firstUnansweredIndex ?? 0) + 1}`}
+								</Text>
+
+								<Pressable
+									className="mt-6 w-full"
+									onPress={() => setIsUnansweredModalOpen(false)}
+								>
+									<Box className="h-12 rounded-2xl bg-[#ff9f2f] items-center justify-center">
+										<Text className="text-base font-bold text-[#1B1203]">
+											{t("common.understood", "Tushundim")}
+										</Text>
+									</Box>
+								</Pressable>
+							</Box>
 						</ModalBody>
-						<ModalFooter className="justify-between gap-2">
-							<Button
-								size="lg"
-								className="flex-1 rounded-full"
-								onPress={() => setIsUnansweredModalOpen(false)}
-							>
-								<ButtonText>{t("common.understood", "Tushundim")}</ButtonText>
-							</Button>
-						</ModalFooter>
 					</ModalContent>
 				</Modal>
 
 				<Modal
 					isOpen={isExitModalOpen}
-					onClose={() => setIsExitModalOpen(false)}
+					onClose={() => {
+						if (!isAbandoningSession) {
+							setExitError("");
+							setIsExitModalOpen(false);
+						}
+					}}
 					size="lg"
 				>
-					<ModalBackdrop className="bg-foreground/20 !backdrop-blur-2xl" />
-					<ModalContent className="rounded-[30px] bg-background p-5">
-						<ModalBody className="mt-3 text-center mb-5">
-							<Image
-								className="mx-auto"
-								source={require("../../../../../assets/images/alert.webp")}
-								alt=""
-							/>
-							<Divider className="mx-4 my-4" />
-							<Heading className="text-center" size="md">
-								{t("exam.exit.title", "Exit test")}
-							</Heading>
+					<ModalBackdrop className="bg-black/45" />
+					<ModalContent className="rounded-[34px] border-0 bg-background px-6 pt-6 pb-6">
+						<Pressable
+							className="absolute right-5 top-5 z-10"
+							onPress={() => {
+								setExitError("");
+								setIsExitModalOpen(false);
+							}}
+							disabled={isAbandoningSession}
+							style={isAbandoningSession ? { opacity: 0.45 } : undefined}
+						>
+							<X size={24} color="#8f8f8f" />
+						</Pressable>
 
-							<Text className="text-base text-center mt-1 text-muted-foreground">
-								{t("exam.exit.message", "Do you want to leave?")}
-							</Text>
+						<ModalBody className="mt-0 mb-0 pt-8 pb-0">
+							<Box className="items-center">
+								<Box className="h-20 w-20 rounded-full border-2 border-rose-400 items-center justify-center">
+									<Power size={34} color="#e11d48" strokeWidth={2.4} />
+								</Box>
+
+								<Heading className="mt-8 text-center text-2xl font-bold">
+									{t("exam.exit.title", "Exit test")}
+								</Heading>
+
+								<Text className="mt-4 text-center text-base leading-6 text-muted-foreground">
+									{t("exam.exit.message", "Do you want to leave?")}
+								</Text>
+
+								{exitError ? (
+									<Text className="mt-3 text-center text-sm font-medium text-rose-500">
+										{exitError}
+									</Text>
+								) : null}
+
+								<Box className="mt-6 w-full flex-row gap-3">
+									<Pressable
+										className="flex-1"
+										onPress={() => {
+											setExitError("");
+											setIsExitModalOpen(false);
+										}}
+										disabled={isAbandoningSession}
+										style={isAbandoningSession ? { opacity: 0.5 } : undefined}
+									>
+										<Box className="h-12 rounded-2xl bg-card items-center justify-center">
+											<Text className="text-base font-semibold">
+												{t("exam.exit.cancel", "Cancel")}
+											</Text>
+										</Box>
+									</Pressable>
+									<Pressable
+										className="flex-1"
+										onPress={handleExitTest}
+										disabled={isAbandoningSession}
+									>
+										<Box className="h-12 flex-row gap-2 rounded-2xl bg-[#ff9f2f] items-center justify-center">
+											{isAbandoningSession ? (
+												<ActivityIndicator color="#1B1203" />
+											) : null}
+											<Text className="text-base font-bold text-[#1B1203]">
+												{isAbandoningSession
+													? t("common.loading", "Loading...")
+													: t("exam.exit.confirm", "Exit")}
+											</Text>
+										</Box>
+									</Pressable>
+								</Box>
+							</Box>
 						</ModalBody>
-						<ModalFooter className="justify-between gap-2">
-							<Button
-								size="lg"
-								className="rounded-full flex-1"
-								variant="outline"
-								onPress={() => setIsExitModalOpen(false)}
-							>
-								<ButtonText>{t("exam.exit.cancel", "Cancel")}</ButtonText>
-							</Button>
-							<Button
-								size="lg"
-								className="flex-1 rounded-full bg-foreground"
-								onPress={() => {
-									setIsExitModalOpen(false);
-									router.back();
-								}}
-							>
-								<ButtonText className="text-background">
-									{t("exam.exit.confirm", "Exit")}
-								</ButtonText>
-							</Button>
-						</ModalFooter>
 					</ModalContent>
 				</Modal>
 			</Box>

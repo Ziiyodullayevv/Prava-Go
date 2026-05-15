@@ -16,8 +16,6 @@ export type MistakeQuestionPacksOverview = {
 };
 
 export type TestSettings = {
-	showMistakesOnly: boolean;
-	shuffleQuestions: boolean;
 	autoAdvance: boolean;
 };
 
@@ -37,6 +35,8 @@ export type TheoryTopic = {
 	order: number;
 	imageKey: string | null;
 	totalQuestions: number;
+	timeLimitMinutes: number | null;
+	tokenCost: number;
 	seenQuestions: number;
 	answeredQuestions: number;
 	correctCount: number;
@@ -83,10 +83,13 @@ export type TheorySession = {
 	topicTitle: string | null;
 	mode: TestMode;
 	totalQuestions: number;
+	timeLimitMinutes?: number | null;
 	settings: TestSettings;
 	startedAt: string;
 	finishedAt: string | null;
 	scoreCorrect: number;
 	scoreIncorrect: number;
 	questions: SessionQuestion[];
+	percentage?: number;
+	isPassed?: boolean;
 };

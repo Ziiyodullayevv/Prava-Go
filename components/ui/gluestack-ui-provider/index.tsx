@@ -1,6 +1,6 @@
 import React, { useLayoutEffect } from 'react';
 import { config } from './config';
-import { View, ViewProps } from 'react-native';
+import { useColorScheme as useRNColorScheme, View, ViewProps } from 'react-native';
 import { OverlayProvider } from '@gluestack-ui/core/overlay/creator';
 import { ToastProvider } from '@gluestack-ui/core/toast/creator';
 import { useColorScheme } from 'nativewind';
@@ -15,13 +15,16 @@ export function GluestackUIProvider({
   children?: React.ReactNode;
   style?: ViewProps['style'];
 }) {
-  const { colorScheme, setColorScheme } = useColorScheme();
+  const { setColorScheme } = useColorScheme();
+  const systemColorScheme = useRNColorScheme();
   const resolvedMode =
-    mode === 'system' ? (colorScheme === 'dark' ? 'dark' : 'light') : mode;
+    mode === 'system' ? (systemColorScheme === 'dark' ? 'dark' : 'light') : mode;
 
   useLayoutEffect(() => {
-    setColorScheme(mode);
-  }, [mode, setColorScheme]);
+    // Avoid passing "system" here because it can become null in native
+    // AppearanceModule on Android and crash.
+    setColorScheme(resolvedMode);
+  }, [resolvedMode, setColorScheme]);
 
   return (
     <View

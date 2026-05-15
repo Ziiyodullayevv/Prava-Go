@@ -38,8 +38,6 @@ export function CustomSwitch({
 	thumbColor = "#ffffff",
 }: CustomSwitchProps) {
 	const progress = useRef(new Animated.Value(value ? 1 : 0)).current;
-	const isAnimatingRef = useRef(false);
-	const unlockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const thumbDiameter = height - padding * 2;
 	const maxTranslateX = width - padding * 2 - thumbDiameter;
@@ -57,38 +55,18 @@ export function CustomSwitch({
 	);
 
 	useEffect(() => {
-		if (unlockTimerRef.current) {
-			clearTimeout(unlockTimerRef.current);
-			unlockTimerRef.current = null;
-		}
-
-		isAnimatingRef.current = true;
 		Animated.timing(progress, {
 			toValue: value ? 1 : 0,
 			duration: 220,
 			easing: Easing.inOut(Easing.ease),
 			useNativeDriver: false,
-		}).start(() => {
-			isAnimatingRef.current = false;
-		});
-
-		return () => {
-			if (unlockTimerRef.current) {
-				clearTimeout(unlockTimerRef.current);
-				unlockTimerRef.current = null;
-			}
-		};
+		}).start();
 	}, [progress, value]);
 
 	const handlePress = (event: GestureResponderEvent) => {
 		event.stopPropagation();
-		if (disabled || isAnimatingRef.current) return;
-		isAnimatingRef.current = true;
+		if (disabled) return;
 		onValueChange(!value);
-		unlockTimerRef.current = setTimeout(() => {
-			isAnimatingRef.current = false;
-			unlockTimerRef.current = null;
-		}, 280);
 	};
 
 	return (

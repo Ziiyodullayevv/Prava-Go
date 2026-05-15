@@ -51,10 +51,10 @@ const radioGroupStyle = tva({
 });
 
 const radioIconStyle = tva({
-  base: 'rounded-full absolute stroke-none top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 fill-primary h-2 w-2',
+  base: 'rounded-full absolute stroke-none top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 fill-primary h-2.5 w-2.5',
   parentVariants: {
     size: {
-      sm: 'h-[9px] w-[9px]',
+      sm: 'h-2.5 w-2.5',
       md: 'h-3 w-3',
       lg: 'h-4 w-4',
     },
@@ -62,12 +62,12 @@ const radioIconStyle = tva({
 });
 
 const radioIndicatorStyle = tva({
-  base: 'relative justify-center items-center aspect-square h-4 w-4 shrink-0 rounded-full border border-border  dark:bg-input/30 shadow-xs web:outline-none web:data-[focus-visible=true]:ring-[3px] web:data-[focus-visible=true]:ring-ring/50 web:data-[focus-visible=true]:border-ring data-[invalid=true]:ring-destructive/20 data-[invalid=true]:border-destructive data-[disabled=true]:cursor-not-allowed data-[disabled=true]:opacity-50',
+  base: 'relative justify-center items-center aspect-square h-5 w-5 shrink-0 rounded-full border border-border dark:bg-input/30 shadow-xs web:outline-none web:data-[focus-visible=true]:ring-[3px] web:data-[focus-visible=true]:ring-ring/50 web:data-[focus-visible=true]:border-ring data-[invalid=true]:ring-destructive/20 data-[invalid=true]:border-destructive data-[disabled=true]:cursor-not-allowed data-[disabled=true]:opacity-50',
   parentVariants: {
     size: {
-      sm: 'h-4 w-4',
-      md: 'h-5 w-5',
-      lg: 'h-6 w-6',
+      sm: 'h-5 w-5',
+      md: 'h-6 w-6',
+      lg: 'h-7 w-7',
     },
   },
 });

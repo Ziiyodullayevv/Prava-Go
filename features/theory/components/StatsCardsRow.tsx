@@ -21,7 +21,13 @@ export function StatsCardsRow({ items, className }: StatsCardsRowProps) {
 					key={item.label}
 					className="flex-1 bg-secondary-foreground/5 rounded-2xl p-1"
 				>
-					<Text className="text-[12px] mt-1 text-center">{item.label}</Text>
+					<Text
+						className="text-[12px] mt-1 text-center"
+						numberOfLines={1}
+						ellipsizeMode="tail"
+					>
+						{item.label}
+					</Text>
 					<Box className="mt-1 rounded-[14px] bg-background shadow-hard-5 py-4">
 						<Heading className="text-center text-[20px] font-semibold">
 							{item.value}

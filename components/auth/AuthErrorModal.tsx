@@ -1,16 +1,14 @@
 import React from "react";
+import { Pressable } from "react-native";
+import { AlertTriangle, X } from "lucide-react-native";
 
-import { Button, ButtonText } from "@/components/ui/button";
+import { Box } from "@/components/ui/box";
 import { Heading } from "@/components/ui/heading";
-import { Icon, CloseIcon } from "@/components/ui/icon";
 import {
 	Modal,
 	ModalBackdrop,
 	ModalBody,
-	ModalCloseButton,
 	ModalContent,
-	ModalFooter,
-	ModalHeader,
 } from "@/components/ui/modal";
 import { Text } from "@/components/ui/text";
 
@@ -28,26 +26,35 @@ export function AuthErrorModal({
 	onClose,
 }: AuthErrorModalProps) {
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} size="md">
-			<ModalBackdrop className="bg-foreground/20 !backdrop-blur-2xl" />
-			<ModalContent className="rounded-3xl bg-background p-5">
-				<ModalHeader className="relative">
-					<Heading size="md">{title}</Heading>
-					<ModalCloseButton
-						className="bg-foreground/10 w-7 h-7 rounded-full justify-center absolute right-0 top-0 items-center"
-						onPress={onClose}
-					>
-						<Icon as={CloseIcon} size="sm" />
-					</ModalCloseButton>
-				</ModalHeader>
-				<ModalBody className="pt-2">
-					<Text className="text-base text-foreground/80">{message}</Text>
+		<Modal isOpen={isOpen} onClose={onClose} size="lg">
+			<ModalBackdrop className="bg-black/45" />
+			<ModalContent className="rounded-[34px] border-0 bg-background px-6 pt-6 pb-6">
+				<Pressable className="absolute right-5 top-5 z-10" onPress={onClose}>
+					<X size={24} color="#8f8f8f" />
+				</Pressable>
+
+				<ModalBody className="mt-0 mb-0 pt-8 pb-0">
+					<Box className="items-center">
+						<Box className="h-20 w-20 rounded-full border-2 border-red-300 bg-red-100/70 items-center justify-center">
+							<AlertTriangle size={34} color="#dc2626" strokeWidth={2.4} />
+						</Box>
+
+						<Heading className="mt-8 text-center text-2xl font-bold">
+							{title}
+						</Heading>
+						<Text className="mt-4 text-center text-base leading-6 text-muted-foreground">
+							{message}
+						</Text>
+
+						<Pressable className="mt-6 w-full" onPress={onClose}>
+							<Box className="h-12 rounded-2xl bg-[#ff9f2f] items-center justify-center">
+								<Text className="text-base font-bold text-[#1B1203]">
+									Tushundim
+								</Text>
+							</Box>
+						</Pressable>
+					</Box>
 				</ModalBody>
-				<ModalFooter className="pt-3">
-					<Button className="w-full rounded-full" onPress={onClose}>
-						<ButtonText>Tushundim</ButtonText>
-					</Button>
-				</ModalFooter>
 			</ModalContent>
 		</Modal>
 	);

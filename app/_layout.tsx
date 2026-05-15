@@ -12,6 +12,7 @@ import {
 	useAppTheme,
 } from "@/contexts/theme-context";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
+import { AppQueryClientProvider } from "@/lib/query-client";
 import { useFonts } from "expo-font";
 import { Slot } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -39,9 +40,11 @@ export default function RootLayout() {
 	return (
 		<AppThemeProvider>
 			<I18nProvider>
-				<AuthProvider>
-					<RootLayoutNav fontsLoaded={loaded} />
-				</AuthProvider>
+				<AppQueryClientProvider>
+					<AuthProvider>
+						<RootLayoutNav fontsLoaded={loaded} />
+					</AuthProvider>
+				</AppQueryClientProvider>
 			</I18nProvider>
 		</AppThemeProvider>
 	);
@@ -82,7 +85,7 @@ function RootLayoutNav({ fontsLoaded }: { fontsLoaded: boolean }) {
 		<GestureHandlerRootView style={{ flex: 1, backgroundColor: bg }}>
 			<NavThemeProvider value={navTheme}>
 				<GluestackUIProvider
-					mode={themePreference}
+					mode={colorMode}
 					style={{ backgroundColor: bg }}
 				>
 					<StatusBar style={'auto'} />

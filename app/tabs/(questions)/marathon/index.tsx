@@ -1,36 +1,53 @@
 import React, { useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView } from "react-native";
-import { useRouter } from "expo-router";
+import { ActivityIndicator, Pressable, ScrollView } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
 import {
 	ChevronLeft,
 	CircleHelp,
 	Clock3,
-	Flag,
-	Crown,
+	Coins,
+	Dices,
+	MedalIcon,
+	RotateCcw,
+	Sparkles,
+	Zap,
 } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { CustomSwitch } from "@/components/CustomSwitch";
+import { GradientIconFrame } from "@/components/GradientIconFrame";
+import { YandexRippleButton } from "@/components/YandexRippleButton";
 import { Box } from "@/components/ui/box";
 import { Heading } from "@/components/ui/heading";
-import { Text } from "@/components/ui/text";
-import { Button, ButtonSpinner, ButtonText } from "@/components/ui/button";
 import { Image } from "@/components/ui/image";
-import { CustomSwitch } from "@/components/CustomSwitch";
+import { Text } from "@/components/ui/text";
 import { Colors } from "@/constants/Colors";
-import { useAuth } from "@/contexts/auth-context";
 import { useAppTheme } from "@/contexts/theme-context";
-import { createMarathonSession } from "@/features/theory/api";
+import {
+	useStartQuizPracticeSessionMutation,
+	useQuizModeCostsQuery,
+	type StartQuizPracticeSessionInput,
+} from "@/features/quiz/api";
 import { useAutoAdvance } from "@/hooks/useAutoAdvance";
 import { useI18n } from "@/locales/i18n-provider";
+import {
+	getFloatingActionBottomOffset,
+	getFloatingActionContentPadding,
+} from "@/lib/safe-area";
 
-const PASS_MARK = 80;
-const MARATHON_OPTIONS = [
-	{ id: "marathon-50", questionCount: 50, durationMinutes: 60 },
-	{ id: "marathon-100", questionCount: 100, durationMinutes: 120 },
-	{ id: "marathon-150", questionCount: 150, durationMinutes: 180 },
-] as const;
+const RANDOM_COUNT = 10 as const;
+const MARATHON_COUNTS = [50, 100, 150] as const;
 
-type MarathonOptionId = (typeof MARATHON_OPTIONS)[number]["id"];
+type PracticeCount = StartQuizPracticeSessionInput["count"];
+
+type PracticeOptionRowProps = {
+	description: string;
+	isLast: boolean;
+	isSelected: boolean;
+	label: string;
+	onPress: () => void;
+};
 
 type StatItemProps = {
 	label: string;
@@ -42,10 +59,6 @@ type StatItemProps = {
 	}>;
 	iconColor: string;
 };
-
-function formatTimer(minutes: number) {
-	return `${String(minutes).padStart(2, "0")}:00`;
-}
 
 function StatItem({ label, value, icon, iconColor }: StatItemProps) {
 	const StatIcon = icon;
@@ -63,158 +76,214 @@ function StatItem({ label, value, icon, iconColor }: StatItemProps) {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
 	return (
-		<Box className="min-h-14 py-3 flex-row items-start justify-between gap-3 border-b border-foreground/10">
-			<Text className="text-base font-normal flex-1">{label}</Text>
-			<Text className="text-sm text-right font-semibold text-muted-foreground shrink-0">
+		<Box className="h-14 flex-row items-center justify-between border-b border-foreground/10">
+			<Text className="text-base font-normal">{label}</Text>
+			<Text className="text-sm font-semibold text-muted-foreground">
 				{value}
 			</Text>
 		</Box>
 	);
 }
 
-type MarathonOptionRowProps = {
-	label: string;
-	description: string;
-	isSelected: boolean;
-	isLast: boolean;
-	onPress: () => void;
-	onSwitchChange: (next: boolean) => void;
-};
-
-function MarathonOptionRow({
-	label,
+function PracticeOptionRow({
 	description,
-	isSelected,
 	isLast,
+	isSelected,
+	label,
 	onPress,
-	onSwitchChange,
-}: MarathonOptionRowProps) {
+}: PracticeOptionRowProps) {
 	return (
 		<Pressable onPress={onPress}>
 			<Box
 				className={[
-					"min-h-16 py-2 flex-row items-center justify-between",
+					"min-h-[72px] flex-row items-center justify-between py-3",
 					isLast ? "" : "border-b border-foreground/10",
 				].join(" ")}
 			>
-				<Box className="flex-1 pr-3">
-					<Text className="text-base font-normal">{label}</Text>
-					<Text className="text-xs text-muted-foreground mt-0.5">
+				<Box className="flex-1 pr-4">
+					<Heading className="text-lg font-semibold">{label}</Heading>
+					<Text className="mt-1 text-base text-muted-foreground">
 						{description}
 					</Text>
 				</Box>
-				<CustomSwitch value={isSelected} onValueChange={onSwitchChange} />
+				<CustomSwitch
+					value={isSelected}
+					onValueChange={(next) => {
+						if (next) onPress();
+					}}
+				/>
 			</Box>
 		</Pressable>
 	);
 }
 
-export default function MarathonIntroScreen() {
+export default function MarathonScreen() {
 	const router = useRouter();
 	const insets = useSafeAreaInsets();
-	const { user } = useAuth();
-	const { t } = useI18n();
+	const params = useLocalSearchParams<{ mode?: string; count?: string }>();
 	const { colorMode } = useAppTheme();
+	const { t } = useI18n();
 	const isDark = colorMode === "dark";
 	const palette = isDark ? Colors.dark : Colors.light;
 	const text = isDark ? "#ECEDEE" : "#111111";
 	const muted = isDark ? "#b0b0b0" : "#4b4b4b";
-	const primaryForegroundColor = isDark ? "#171717" : "#FAFAFA";
+	const panelBg = isDark ? "#202020" : "#f4f4f4";
+	const optionCardBg = isDark ? "#171717" : "#ffffff";
+	const primaryButtonText = isDark ? "#111111" : "#ffffff";
+	const bottomActionOffset = getFloatingActionBottomOffset(insets.bottom);
+	const isRandomMode = params.mode === "random" || params.count === "10";
+	const counts = useMemo<PracticeCount[]>(
+		() => (isRandomMode ? [RANDOM_COUNT] : [...MARATHON_COUNTS]),
+		[isRandomMode],
+	);
+	const [selectedCount, setSelectedCount] = useState<PracticeCount>(counts[0]);
+	const startPracticeMutation = useStartQuizPracticeSessionMutation();
+	const { data: modeCosts } = useQuizModeCostsQuery();
+	const randomCost = modeCosts?.practice ?? null;
+	const marathonCost = modeCosts?.marathon ?? null;
+	const tokenCost = isRandomMode ? randomCost : marathonCost;
 	const {
 		value: autoAdvance,
 		setValue: setAutoAdvance,
 		isReady: isAutoAdvanceReady,
-	} = useAutoAdvance("marathon");
-
+	} = useAutoAdvance(isRandomMode ? "random-practice" : "marathon-practice");
 	const isStartingRef = useRef(false);
-	const [selectedOptionId, setSelectedOptionId] = useState<MarathonOptionId>(
-		MARATHON_OPTIONS[0].id,
-	);
 	const [startError, setStartError] = useState("");
-	const [isStarting, setIsStarting] = useState(false);
 
-	const selectedOption = useMemo(
-		() =>
-			MARATHON_OPTIONS.find((option) => option.id === selectedOptionId) ??
-			MARATHON_OPTIONS[0],
-		[selectedOptionId],
-	);
+	const MARATHON_TOKEN_COSTS: Record<number, number> = { 50: 40, 100: 70, 150: 90 };
+	const RANDOM_TOKEN_COST = 10;
+	const resolvedTokenCost = isRandomMode
+		? (randomCost ?? RANDOM_TOKEN_COST)
+		: (marathonCost ?? MARATHON_TOKEN_COSTS[selectedCount] ?? 40);
 
-	const handleStartMarathon = async () => {
+	const title = isRandomMode
+		? t("practice.explore.random.title", "Random Questions")
+		: t("practice.explore.marathon.title", "Marathon");
+	const subtitle = isRandomMode
+		? `10 ${t("common.questionsWord", "savol")} · 10 ${t("practice.minutes", "daqiqa")}`
+		: `50 / 100 / 150 ${t("common.questionsWord", "savol")}`;
+
+	React.useEffect(() => {
+		setSelectedCount(counts[0]);
+	}, [counts]);
+
+	const handleStart = async () => {
 		if (isStartingRef.current) return;
-		if (!user?.id) {
-			setStartError(t("common.error", "Something went wrong."));
-			return;
-		}
 		isStartingRef.current = true;
 		setStartError("");
-		setIsStarting(true);
 
 		try {
-			const { sessionId } = await createMarathonSession({
-				userId: user.id,
-				questionLimit: selectedOption.questionCount,
-				settings: {
-					showMistakesOnly: false,
-					shuffleQuestions: true,
-					autoAdvance,
-				},
+			const session = await startPracticeMutation.mutateAsync({
+				count: selectedCount,
+				mode: isRandomMode ? "practice" : "marathon",
 			});
-
 			router.replace({
 				pathname: "/tabs/(questions)/theory/test/[sessionId]",
-				params: { sessionId },
+				params: {
+					sessionId: String(session.id),
+					slug: isRandomMode ? "random" : "marathon",
+					title,
+					auto: autoAdvance ? "1" : "0",
+					tokenCost: String(resolvedTokenCost),
+				},
 			});
-			isStartingRef.current = false;
-			setIsStarting(false);
 		} catch (err) {
-			const message =
+			setStartError(
 				err instanceof Error
 					? err.message
-					: t("common.error", "Something went wrong.");
-			setStartError(message);
+					: t("common.error", "Something went wrong."),
+			);
+		} finally {
 			isStartingRef.current = false;
-			setIsStarting(false);
 		}
 	};
 
 	return (
-		<Box className="flex-1 pt-safe bg-background">
-			<Box className="px-4 my-2 flex-row items-center justify-between">
-				<Pressable onPress={() => router.back()}>
-					<Box className="h-12 w-12 rounded-full items-center shadow-hard-5 justify-center bg-card">
-						<ChevronLeft size={24} color={palette.text} />
-					</Box>
-				</Pressable>
+		<Box
+			className="flex-1 pt-safe"
+			style={{ backgroundColor: isDark ? palette.background : "#ffffff" }}
+		>
+			{isDark ? null : (
+				<LinearGradient
+					pointerEvents="none"
+					colors={[
+						"rgb(255,255,255)",
+						"rgba(255,255,255,0.5)",
+						"rgba(255,255,255,0)",
+					]}
+					start={{ x: 0.5, y: 0 }}
+					end={{ x: 0.5, y: 1 }}
+					style={{
+						position: "absolute",
+						left: 0,
+						right: 0,
+						top: 0,
+						height: 120,
+					}}
+				/>
+			)}
 
-				<Box className="flex-1 items-center px-2">
+			<Box className="px-4 my-2 flex-row items-center justify-between">
+				<Box
+					style={{
+						elevation: 1,
+						shadowColor: "#000",
+						shadowOffset: { width: 0, height: 2 },
+						shadowOpacity: isDark ? 0.14 : 0.08,
+						shadowRadius: 3,
+					}}
+				>
+					<YandexRippleButton
+						onPress={() => router.replace("/tabs/(tabs)/home")}
+						borderRadius={9999}
+					>
+						<GradientIconFrame
+							size={48}
+							borderRadius={999}
+							innerBorderRadius={999}
+						>
+							<ChevronLeft size={24} color={palette.text} />
+						</GradientIconFrame>
+					</YandexRippleButton>
+				</Box>
+
+				<Box className="items-center">
 					<Heading className="text-lg font-semibold" style={{ color: text }}>
-						{t("practice.explore.marathon.title", "Marathon")}
+						{title}
 					</Heading>
-					<Text className="text-sm text-center" style={{ color: muted }}>
-						{t("practice.marathon.shortSubtitle", "50-150 savol")}
+					<Text className="text-sm" style={{ color: muted }}>
+						{subtitle}
 					</Text>
 				</Box>
 
-				<Button
-					variant="ghost"
-					className="h-11 w-11 bg-card shadow-hard-1 rounded-full"
+				<GradientIconFrame
+					size={48}
+					borderRadius={999}
+					innerBorderRadius={999}
 				>
-					<Crown size={24} color={palette.text} />
-				</Button>
+					{isRandomMode ? (
+						<Dices size={24} color={palette.text} />
+					) : (
+						<MedalIcon size={24} color={palette.text} />
+					)}
+				</GradientIconFrame>
 			</Box>
 
 			<ScrollView
 				showsVerticalScrollIndicator={false}
 				contentContainerStyle={{
-					paddingBottom: Math.max(insets.bottom, 12) + 112,
+					paddingBottom: getFloatingActionContentPadding(insets.bottom),
 				}}
 			>
 				<Box className="pt-1">
 					<Image
-						className="self-center mt-4 w-[210px] h-[210px]"
-						source={require("../../../../assets/images/practice/medal.webp")}
-						alt={t("practice.explore.marathon.title", "Marathon")}
+						className="self-center mt-4 w-[230px] h-[230px]"
+						source={
+							isRandomMode
+								? require("../../../../assets/images/practice/marafon.png")
+								: require("../../../../assets/images/practice/medal.webp")
+						}
+						alt={title}
 						resizeMode="contain"
 					/>
 
@@ -224,129 +293,333 @@ export default function MarathonIntroScreen() {
 						className="mt-1 text-center text-3xl font-semibold"
 						style={{ color: text }}
 					>
-						{t("practice.explore.marathon.title", "Marathon")}
+						{title}
 					</Heading>
 				</Box>
 
-				<Box className="mt-6 rounded-t-[34px] h-full bg-card px-4 pt-5 pb-7">
-					<Text className="text-sm uppercase tracking-wide text-muted-foreground">
-						{t("practice.marathonInfo", "Marathon info")}
-					</Text>
+				<Box
+					className="mt-6 rounded-t-[34px] h-full px-4 pt-5 pb-7"
+					style={{ backgroundColor: panelBg }}
+				>
+					{isRandomMode ? (
+						<>
+							<Text className="text-sm uppercase tracking-wide text-muted-foreground">
+								{t("practice.testInfo", "Test ma'lumotlari")}
+							</Text>
 
-					<Box className="rounded-2xl py-4">
-						<Box className="flex-row items-center">
-							<StatItem
-								label={t("theory.questions", "Questions")}
-								value={String(selectedOption.questionCount)}
-								icon={CircleHelp}
-								iconColor={palette.tabIconDefault}
-							/>
-							<Box className="mx-2 h-16 w-[1px] bg-border/70" />
-							<StatItem
-								label={t("practice.minutes", "Minutes")}
-								value={String(selectedOption.durationMinutes)}
-								icon={Clock3}
-								iconColor={palette.tint}
-							/>
-							<Box className="mx-2 h-16 w-[1px] bg-border/70" />
-							<StatItem
-								label={t("practice.passMark", "Pass mark")}
-								value={`${PASS_MARK}%`}
-								icon={Flag}
-								iconColor={palette.tabIconDefault}
-							/>
-						</Box>
-					</Box>
-
-					<Text className="text-sm uppercase tracking-wide text-muted-foreground">
-						{t("practice.marathonOptions", "Marathon options")}
-					</Text>
-
-					<Box className="mt-3 rounded-3xl bg-background px-4">
-						{MARATHON_OPTIONS.map((option, index) => (
-							<MarathonOptionRow
-								key={option.id}
-								label={t(
-									`practice.marathon.option.${option.questionCount}`,
-									`${option.questionCount}-question marathon`,
-								)}
-								description={t(
-									`practice.marathon.option.${option.questionCount}.time`,
-									`${option.durationMinutes} minutes`,
-								)}
-								isSelected={selectedOptionId === option.id}
-								isLast={index === MARATHON_OPTIONS.length - 1}
-								onPress={() => setSelectedOptionId(option.id)}
-								onSwitchChange={(next) => {
-									if (next) {
-										setSelectedOptionId(option.id);
-									}
-								}}
-							/>
-						))}
-					</Box>
-
-					<Text className="mt-5 text-sm uppercase tracking-wide text-muted-foreground">
-						{t("theory.testOptions", "Test settings")}
-					</Text>
-
-					<Box className="mt-3 rounded-3xl bg-background px-4">
-						{isAutoAdvanceReady ? (
-							<Pressable onPress={() => setAutoAdvance(!autoAdvance)}>
-								<Box className="min-h-14 py-3 flex-row items-start justify-between gap-3 border-b border-foreground/10">
-									<Text className="text-base font-normal flex-1">
-										{t(
-											"theory.settings.autoAdvance",
-											"Auto-advance to next question",
-										)}
-									</Text>
-									<CustomSwitch
-										value={autoAdvance}
-										onValueChange={setAutoAdvance}
+							<Box className="rounded-2xl py-4">
+								<Box className="flex-row items-center">
+									<StatItem
+										label={t("practice.questions.title", "Savollar")}
+										value={String(selectedCount)}
+										icon={CircleHelp}
+										iconColor={palette.tabIconDefault}
+									/>
+									<Box className="mx-2 h-16 w-[1px] bg-border/70" />
+									<StatItem
+										label={t("practice.minutes", "Daqiqa")}
+										value={String(selectedCount)}
+										icon={Clock3}
+										iconColor={palette.tint}
+									/>
+									<Box className="mx-2 h-16 w-[1px] bg-border/70" />
+									<StatItem
+										label={t("practice.coin", "Tanga")}
+										value={String(resolvedTokenCost)}
+										icon={Coins}
+										iconColor="#ff9f2f"
 									/>
 								</Box>
-							</Pressable>
-						) : null}
+							</Box>
 
-						<InfoRow
-							label={t("practice.questionOrder", "Question order")}
-							value={t("practice.questionOrderRandom", "Randomized")}
-						/>
+							<Text className="text-sm uppercase tracking-wide text-muted-foreground">
+								{t("practice.testSettings", "Test sozlamalari")}
+							</Text>
 
-						<Box className="h-14 flex-row items-center justify-between">
-							<Text className="text-base font-normal">
-								{t("practice.timer", "Timer")}
+							<Box
+								className="mt-3 rounded-3xl px-4"
+								style={{ backgroundColor: optionCardBg }}
+							>
+								{isAutoAdvanceReady ? (
+									<Pressable onPress={() => setAutoAdvance(!autoAdvance)}>
+										<Box className="h-14 flex-row items-center justify-between border-b border-foreground/10">
+											<Text className="text-base font-normal">
+												{t(
+													"theory.settings.autoAdvance",
+													"Keyingi savolga avtomatik o'tish",
+												)}
+											</Text>
+											<CustomSwitch
+												value={autoAdvance}
+												onValueChange={setAutoAdvance}
+											/>
+										</Box>
+									</Pressable>
+								) : null}
+
+								<InfoRow
+									label={t("practice.questionOrder", "Savollar tartibi")}
+									value={t("practice.questionOrderRandom", "Tasodifiy")}
+								/>
+								<InfoRow
+									label={t("practice.price", "Narx")}
+									value={randomCost !== null ? `${randomCost} ${t("practice.coin", "tanga").toLowerCase()}` : "—"}
+								/>
+
+								<Box className="h-14 flex-row items-center justify-between">
+									<Text className="text-base font-normal">
+										{t("practice.time", "Vaqt")}
+									</Text>
+									<Text className="text-sm font-semibold text-muted-foreground">
+										{selectedCount}:00
+									</Text>
+								</Box>
+							</Box>
+
+							<Text className="text-sm uppercase tracking-wide text-muted-foreground mt-5">
+								{t("tokenConfirm.rulesTitle", "Token qoidalari")}
 							</Text>
-							<Text className="text-sm font-semibold text-muted-foreground">
-								{formatTimer(selectedOption.durationMinutes)}
+
+							<Box
+								className="mt-3 rounded-3xl px-4"
+								style={{ backgroundColor: optionCardBg }}
+							>
+								<Box className="h-14 flex-row items-center justify-between border-b border-foreground/10">
+									<Box className="flex-row items-center gap-3">
+										<Zap size={16} color="#ff9f2f" strokeWidth={2.2} />
+										<Text className="text-base font-normal">
+											{t("tokenConfirm.costLabel", "Yechiladi")}
+										</Text>
+									</Box>
+									<Text className="text-sm font-semibold" style={{ color: "#ff9f2f" }}>
+										{resolvedTokenCost} {t("tokenConfirm.tokenWord", "tanga")}
+									</Text>
+								</Box>
+								<Box className="h-14 flex-row items-center justify-between border-b border-foreground/10">
+									<Box className="flex-row items-center gap-3">
+										<RotateCcw size={16} color="#3b82f6" strokeWidth={2.2} />
+										<Text className="text-base font-normal">
+											{t("tokenConfirm.refundLabel", "Qaytariladi")}
+										</Text>
+									</Box>
+									<Text className="text-sm font-semibold text-muted-foreground">
+										{t("tokenConfirm.refundCondition", "80%+ natijada")}
+									</Text>
+								</Box>
+								<Box className="h-14 flex-row items-center justify-between">
+									<Box className="flex-row items-center gap-3">
+										<Sparkles size={16} color="#10b981" strokeWidth={2.2} />
+										<Text className="text-base font-normal">
+											{t("tokenConfirm.bonusLabel", "Bonus tokenlar")}
+										</Text>
+									</Box>
+									<Text className="text-sm font-semibold text-muted-foreground">
+										{t("tokenConfirm.bonusCondition", "Muvaffaqiyatda")}
+									</Text>
+								</Box>
+							</Box>
+						</>
+					) : (
+						<>
+							<Text className="text-sm uppercase tracking-wide text-muted-foreground">
+								{t("practice.testInfo", "Test ma'lumotlari")}
 							</Text>
+
+							<Box className="rounded-2xl py-4">
+								<Box className="flex-row items-center">
+									<StatItem
+										label={t("practice.questions.title", "Savollar")}
+										value={String(selectedCount)}
+										icon={CircleHelp}
+										iconColor={palette.tabIconDefault}
+									/>
+									<Box className="mx-2 h-16 w-[1px] bg-border/70" />
+									<StatItem
+										label={t("practice.minutes", "Daqiqa")}
+										value={String(selectedCount)}
+										icon={Clock3}
+										iconColor={palette.tint}
+									/>
+									<Box className="mx-2 h-16 w-[1px] bg-border/70" />
+									<StatItem
+										label={t("practice.coin", "Tanga")}
+										value={String(resolvedTokenCost)}
+										icon={Coins}
+										iconColor="#ff9f2f"
+									/>
+								</Box>
+							</Box>
+
+							<Text className="text-sm uppercase tracking-wide text-muted-foreground">
+								{t("practice.marathonOptions", "Marafon variantlari")}
+							</Text>
+
+							<Box
+								className="mt-3 rounded-3xl px-4"
+								style={{ backgroundColor: optionCardBg }}
+							>
+								{counts.map((count, index) => (
+									<PracticeOptionRow
+										key={count}
+										label={`${count} talik marafon`}
+										description={`${count} daqiqa`}
+										isSelected={selectedCount === count}
+										isLast={index === counts.length - 1}
+										onPress={() => setSelectedCount(count)}
+									/>
+								))}
+							</Box>
+
+							<Text className="mt-5 text-sm uppercase tracking-wide text-muted-foreground">
+								{t("practice.testSettings", "Test sozlamalari")}
+							</Text>
+
+							<Box
+								className="mt-3 rounded-3xl px-4"
+								style={{ backgroundColor: optionCardBg }}
+							>
+								{isAutoAdvanceReady ? (
+									<Pressable onPress={() => setAutoAdvance(!autoAdvance)}>
+										<Box className="h-14 flex-row items-center justify-between border-b border-foreground/10">
+											<Text className="text-base font-normal">
+												{t(
+													"theory.settings.autoAdvance",
+													"Keyingi savolga avtomatik o'tish",
+												)}
+											</Text>
+											<CustomSwitch
+												value={autoAdvance}
+												onValueChange={setAutoAdvance}
+											/>
+										</Box>
+									</Pressable>
+								) : null}
+
+								<InfoRow
+									label={t("practice.questionOrder", "Savollar tartibi")}
+									value={t("practice.questionOrderRandom", "Tasodifiy")}
+								/>
+								<InfoRow
+									label={t("practice.price", "Narx")}
+									value={marathonCost !== null ? `${marathonCost} ${t("practice.coin", "tanga").toLowerCase()}` : "—"}
+								/>
+
+								<Box className="h-14 flex-row items-center justify-between">
+									<Text className="text-base font-normal">
+										{t("practice.time", "Vaqt")}
+									</Text>
+									<Text className="text-sm font-semibold text-muted-foreground">
+										{selectedCount}:00
+									</Text>
+								</Box>
+							</Box>
+
+							<Text className="text-sm uppercase tracking-wide text-muted-foreground mt-5">
+								{t("tokenConfirm.rulesTitle", "Token qoidalari")}
+							</Text>
+
+							<Box
+								className="mt-3 rounded-3xl px-4"
+								style={{ backgroundColor: optionCardBg }}
+							>
+								<Box className="h-14 flex-row items-center justify-between border-b border-foreground/10">
+									<Box className="flex-row items-center gap-3">
+										<Zap size={16} color="#ff9f2f" strokeWidth={2.2} />
+										<Text className="text-base font-normal">
+											{t("tokenConfirm.costLabel", "Yechiladi")}
+										</Text>
+									</Box>
+									<Text className="text-sm font-semibold" style={{ color: "#ff9f2f" }}>
+										{resolvedTokenCost} {t("tokenConfirm.tokenWord", "tanga")}
+									</Text>
+								</Box>
+								<Box className="h-14 flex-row items-center justify-between border-b border-foreground/10">
+									<Box className="flex-row items-center gap-3">
+										<RotateCcw size={16} color="#3b82f6" strokeWidth={2.2} />
+										<Text className="text-base font-normal">
+											{t("tokenConfirm.refundLabel", "Qaytariladi")}
+										</Text>
+									</Box>
+									<Text className="text-sm font-semibold text-muted-foreground">
+										{t("tokenConfirm.refundCondition", "80%+ natijada")}
+									</Text>
+								</Box>
+								<Box className="h-14 flex-row items-center justify-between">
+									<Box className="flex-row items-center gap-3">
+										<Sparkles size={16} color="#10b981" strokeWidth={2.2} />
+										<Text className="text-base font-normal">
+											{t("tokenConfirm.bonusLabel", "Bonus tokenlar")}
+										</Text>
+									</Box>
+									<Text className="text-sm font-semibold text-muted-foreground">
+										{t("tokenConfirm.bonusCondition", "Muvaffaqiyatda")}
+									</Text>
+								</Box>
+							</Box>
+						</>
+					)}
+
+					{startError ? (
+						<Box className="mt-4 rounded-2xl border border-destructive/30 px-3 py-3">
+							<Text className="text-sm text-destructive">{startError}</Text>
 						</Box>
-					</Box>
+					) : null}
 				</Box>
 			</ScrollView>
 
+			<LinearGradient
+				pointerEvents="none"
+				colors={
+					isDark
+						? ["rgba(0,0,0,0)", "rgba(0,0,0,0.4)", "rgba(0,0,0,0.78)"]
+						: [
+								"rgba(255,255,255,0)",
+								"rgba(255,255,255,0.5)",
+								"rgb(255,255,255)",
+							]
+				}
+				start={{ x: 0.5, y: 0.16 }}
+				end={{ x: 0.5, y: 1 }}
+				style={{
+					position: "absolute",
+					left: 0,
+					right: 0,
+					bottom: 0,
+					height: 110,
+				}}
+			/>
+
 			<Box
-				className="absolute left-0 right-0 bottom-0 px-4 pt-3 bg-card border-t border-border/40"
-				style={{ paddingBottom: Math.max(insets.bottom, 12) }}
+				className="absolute left-0 right-0 px-7"
+				style={{ bottom: bottomActionOffset }}
 			>
-				{startError ? (
-					<Text className="mb-2 text-sm text-destructive">{startError}</Text>
-				) : null}
-				<Button
-					className="h-14 rounded-2xl bg-primary"
-					onPress={handleStartMarathon}
-					disabled={isStarting}
+				<Pressable
+					onPress={handleStart}
+					disabled={startPracticeMutation.isPending}
 				>
-					{isStarting ? (
-						<ButtonSpinner color={primaryForegroundColor} />
-					) : null}
-					<ButtonText className="text-base font-semibold text-primary-foreground">
-						{isStarting
-							? t("common.starting", "Starting...")
-							: t("practice.marathonStart", "Start marathon")}
-					</ButtonText>
-				</Button>
+					<Box
+						className={[
+							"h-[52px] rounded-[26px] flex-row items-center justify-center bg-primary",
+							startPracticeMutation.isPending ? "opacity-70" : "",
+						].join(" ")}
+					>
+						{startPracticeMutation.isPending ? (
+							<ActivityIndicator
+								color={primaryButtonText}
+								style={{ marginRight: 8 }}
+							/>
+						) : null}
+						<Text className="text-base font-semibold text-primary-foreground">
+							{startPracticeMutation.isPending
+								? t("practice.starting", "Boshlanmoqda...")
+								: isRandomMode
+									? t("practice.startPractice", "Mashqni boshlash")
+									: t("practice.marathonStart", "Marafonni boshlash")}
+						</Text>
+					</Box>
+				</Pressable>
 			</Box>
+
 		</Box>
 	);
 }

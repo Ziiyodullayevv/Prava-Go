@@ -1,109 +1,86 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { InteractionManager } from "react-native";
-import { EMPTY_OVERVIEW, loadTheoryOverview } from "../api";
+import { useMemo } from "react";
+
 import type { TheoryOverview } from "../types";
 import {
-	getTheoryOverviewLangCacheKey,
-	peekCache,
-	peekMemoryCache,
-	writeCache,
-} from "../cache";
+	buildOverview,
+	mapCategoryToTopic,
+	toNumber,
+} from "../backend-mappers";
+import { useQuizCategoriesPayloadQuery } from "@/features/quiz/api";
+
+const EMPTY_OVERVIEW: TheoryOverview = {
+	summary: {
+		totalTopics: 0,
+		totalQuestions: 0,
+		seenQuestions: 0,
+		notSeenQuestions: 0,
+		progressPercent: 0,
+	},
+	topics: [],
+};
 
 export function useTheoryOverview(
 	userId?: string | null,
 	language?: string | null,
 ) {
-	const languageKey = (language ?? "default").trim() || "default";
-	const initialCacheKey = userId
-		? getTheoryOverviewLangCacheKey(userId, languageKey)
-		: "";
-	const initialMemoryCached = initialCacheKey
-		? peekMemoryCache<TheoryOverview>(initialCacheKey)
-		: null;
-	const [overview, setOverview] = useState<TheoryOverview>(
-		() => initialMemoryCached ?? EMPTY_OVERVIEW,
-	);
-	const [isLoading, setIsLoading] = useState(
-		() => Boolean(userId) && !initialMemoryCached,
-	);
-	const [error, setError] = useState("");
-	const hasCachedViewRef = useRef(
-		(initialMemoryCached?.topics.length ?? 0) > 0,
-	);
+	const languageKey = (language ?? "uz-Latn").trim() || "uz-Latn";
+	const categoriesQuery = useQuizCategoriesPayloadQuery(Boolean(userId));
 
-	useEffect(() => {
-		hasCachedViewRef.current = overview.topics.length > 0;
-	}, [overview.topics.length]);
+	const overview = useMemo<TheoryOverview>(() => {
+		const categories = categoriesQuery.data?.sections ?? [];
+		if (categories.length === 0) return EMPTY_OVERVIEW;
+		const questionCountByCategory = new Map<string, number>();
 
-	useEffect(() => {
-		if (!userId) return;
-		const cacheKey = getTheoryOverviewLangCacheKey(userId, languageKey);
-		const memoryCached = peekMemoryCache<TheoryOverview>(cacheKey);
-		if (!memoryCached) return;
-		setOverview(memoryCached);
-		hasCachedViewRef.current = memoryCached.topics.length > 0;
-		setIsLoading(false);
-	}, [languageKey, userId]);
+		const topics = categories
+			.map((category, index) =>
+				mapCategoryToTopic(category, index, languageKey, questionCountByCategory),
+			)
+			.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title));
 
-	const reload = useCallback(async () => {
-		if (!userId) {
-			setOverview(EMPTY_OVERVIEW);
-			setError("");
-			setIsLoading(false);
-			return;
-		}
+		const builtOverview = buildOverview(topics);
+		const stats = categoriesQuery.data?.stats;
+		if (!stats) return builtOverview;
 
-		const cacheKey = getTheoryOverviewLangCacheKey(userId, languageKey);
-		const memoryCached = peekMemoryCache<TheoryOverview>(cacheKey);
-		if (memoryCached) {
-			setOverview(memoryCached);
-			hasCachedViewRef.current = memoryCached.topics.length > 0;
-		}
+		const totalTopics = toNumber(stats.sections_count);
+		const totalQuestions = toNumber(stats.questions_count);
+		const seenQuestions = toNumber(stats.viewed_count);
+		const notSeenQuestions = toNumber(stats.unviewed_count);
 
-		setIsLoading(!hasCachedViewRef.current && !memoryCached);
-		setError("");
-
-		try {
-			const cached = memoryCached ?? (await peekCache<TheoryOverview>(cacheKey));
-			if (cached) {
-				setOverview(cached);
-				setIsLoading(false);
-			}
-		} catch {
-			// cache read errors are ignored
-		}
-
-		try {
-			const data = await loadTheoryOverview(userId);
-			setOverview(data);
-			await writeCache(cacheKey, data);
-		} catch (err) {
-			const message =
-				err instanceof Error
-					? err.message
-					: "Bo'limlarni yuklashda xatolik yuz berdi.";
-			setError(message);
-			setOverview((prev) => (prev.topics.length > 0 ? prev : EMPTY_OVERVIEW));
-		} finally {
-			setIsLoading(false);
-		}
-	}, [languageKey, userId]);
-
-	useEffect(() => {
-		const task = InteractionManager.runAfterInteractions(() => {
-			reload().catch(() => {});
-		});
-
-		return () => {
-			task.cancel();
+		return {
+			...builtOverview,
+			summary: {
+				totalTopics: totalTopics || builtOverview.summary.totalTopics,
+				totalQuestions: totalQuestions || builtOverview.summary.totalQuestions,
+				seenQuestions,
+				notSeenQuestions:
+					notSeenQuestions ||
+					Math.max(0, (totalQuestions || builtOverview.summary.totalQuestions) - seenQuestions),
+				progressPercent:
+					totalQuestions > 0
+						? Math.round((seenQuestions / totalQuestions) * 100)
+						: builtOverview.summary.progressPercent,
+			},
 		};
-	}, [reload]);
+	}, [categoriesQuery.data, languageKey]);
+
+	const error =
+		categoriesQuery.error instanceof Error
+			? categoriesQuery.error.message
+			: categoriesQuery.error
+				? "Bo'limlarni yuklashda xatolik yuz berdi."
+				: "";
+
+	const reload = async () => {
+		await categoriesQuery.refetch();
+	};
 
 	return {
 		overview,
 		summary: overview.summary,
 		topics: overview.topics,
-		isLoading,
+		isLoading:
+			categoriesQuery.isLoading ||
+			categoriesQuery.isFetching,
 		error,
 		reload,
 	};

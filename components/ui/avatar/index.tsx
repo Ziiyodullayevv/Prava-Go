@@ -17,11 +17,11 @@ const UIAvatar = createAvatar({
 });
 
 const avatarStyle = tva({
-  base: 'relative flex h-12 w-12 shrink-0 rounded-full bg-muted items-center justify-center group-[.avatar-group]/avatar-group:-ml-2.5',
+  base: 'relative flex h-12 w-12 shrink-0 rounded-full bg-black dark:bg-white items-center justify-center group-[.avatar-group]/avatar-group:-ml-2.5',
 });
 
 const avatarFallbackTextStyle = tva({
-  base: 'text-foreground text-xs font-medium text-transform:uppercase',
+  base: 'text-white dark:text-black text-lg leading-6 font-semibold text-transform:uppercase',
 });
 
 const avatarGroupStyle = tva({
@@ -95,15 +95,15 @@ type IAvatarImageProps = React.ComponentPropsWithoutRef<typeof UIAvatar.Image> &
 const AvatarImage = React.forwardRef<
   React.ComponentRef<typeof UIAvatar.Image>,
   IAvatarImageProps
->(function AvatarImage({ className, ...props }, ref) {
+>(function AvatarImage({ className, alt = '', ...props }, ref) {
   return (
     <UIAvatar.Image
       ref={ref}
+      alt={alt}
       {...props}
       className={avatarImageStyle({
         class: className,
       })}
-      // @ts-expect-error - resizeMode is React Native specific
       resizeMode="cover"
     />
   );

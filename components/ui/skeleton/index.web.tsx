@@ -3,6 +3,8 @@ import { skeletonStyle, skeletonTextStyle } from './styles';
 
 import type { VariantProps } from '@gluestack-ui/utils/nativewind-utils';
 
+const DEFAULT_SKELETON_COLOR = 'bg-muted-foreground/20 dark:bg-[#4f4f4f]';
+
 type ISkeletonProps = React.ComponentPropsWithoutRef<'div'> &
   VariantProps<typeof skeletonStyle> & {
     startColor?: string;
@@ -16,7 +18,7 @@ const Skeleton = React.forwardRef<HTMLDivElement, ISkeletonProps>(
       variant = 'rounded',
       children,
       speed = 4,
-      startColor = 'bg-muted-foreground/20',
+      startColor = DEFAULT_SKELETON_COLOR,
       isLoaded = false,
       ...props
     },
@@ -53,7 +55,7 @@ const SkeletonText = React.forwardRef<HTMLDivElement, ISkeletonTextProps>(
       className,
       _lines,
       isLoaded = false,
-      startColor = 'bg-muted-foreground/20',
+      startColor = DEFAULT_SKELETON_COLOR,
       gap = 2,
       children,
       ...props

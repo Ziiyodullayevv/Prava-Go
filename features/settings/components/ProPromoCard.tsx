@@ -12,7 +12,7 @@ type ProPromoCardProps = {
 
 export function ProPromoCard({ onPress }: ProPromoCardProps) {
 	return (
-		<Box className="mt-3 rounded-3xl overflow-hidden shadow-hard-5">
+		<Box className="mt-3 rounded-3xl overflow-hidden">
 			<Box className="!bg-[##ff4d6d] px-6 py-5 overflow-hidden">
 				<Box className="absolute -top-10 -left-10 h-28 w-28 rounded-full bg-white/10" />
 				<Box className="absolute -bottom-12 -right-10 h-36 w-36 rounded-full bg-white/15" />

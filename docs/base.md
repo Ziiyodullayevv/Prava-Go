@@ -1,8 +1,0 @@
-## Prava Go
-
----
-
-**Killer feature:**
-
-
-

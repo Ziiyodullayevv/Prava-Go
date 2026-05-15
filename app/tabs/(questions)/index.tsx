@@ -7,7 +7,7 @@ export default function QuestionsIndexScreen() {
 	const router = useRouter();
 
 	useEffect(() => {
-		router.replace("/tabs/(tabs)/practice");
+		router.replace("/tabs/(tabs)/home");
 	}, [router]);
 
 	return <Box className="flex-1 bg-background" />;

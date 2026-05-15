@@ -1,74 +1,50 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { loadTheoryTopicDetail } from "../api";
+import { useCallback, useMemo } from "react";
+
+import { mapCategoryToTopic } from "../backend-mappers";
 import type { TheoryTopicDetail } from "../types";
-import {
-	getTheoryTopicDetailLangCacheKey,
-	peekCache,
-	writeCache,
-} from "../cache";
+import { useQuizCategoriesQuery } from "@/features/quiz/api";
 
 export function useTheoryTopicDetail(
 	userId?: string | null,
 	slug?: string | null,
 	language?: string | null,
 ) {
-	const [detail, setDetail] = useState<TheoryTopicDetail | null>(null);
-	const [isLoading, setIsLoading] = useState(true);
-	const [error, setError] = useState("");
-	const hasCachedViewRef = useRef(false);
-
 	const normalizedSlug = (slug ?? "").trim();
-	const languageKey = (language ?? "default").trim() || "default";
+	const languageKey = (language ?? "uz-Latn").trim() || "uz-Latn";
+	const enabled = Boolean(userId && normalizedSlug);
+	const categoriesQuery = useQuizCategoriesQuery(enabled);
 
-	useEffect(() => {
-		hasCachedViewRef.current = detail !== null;
-	}, [detail]);
+	const detail = useMemo<TheoryTopicDetail | null>(() => {
+		if (!normalizedSlug) return null;
 
-	const reload = useCallback(async () => {
-		if (!userId || !normalizedSlug) {
-			setDetail(null);
-			setError("");
-			setIsLoading(false);
-			return;
-		}
-
-		setIsLoading(!hasCachedViewRef.current);
-		setError("");
-		const cacheKey = getTheoryTopicDetailLangCacheKey(
-			userId,
-			normalizedSlug,
-			languageKey,
+		const categories = categoriesQuery.data ?? [];
+		const questionCountByCategory = new Map<string, number>();
+		const topics = categories.map((category, index) =>
+			mapCategoryToTopic(category, index, languageKey, questionCountByCategory),
+		);
+		const topic = topics.find(
+			(item) => item.slug === normalizedSlug || item.id === normalizedSlug,
 		);
 
-		try {
-			const cached = await peekCache<TheoryTopicDetail>(cacheKey);
-			if (cached) {
-				setDetail(cached);
-				setIsLoading(false);
-			}
-		} catch {
-			// cache read errors are ignored
-		}
+		return topic ? { topic } : null;
+	}, [categoriesQuery.data, languageKey, normalizedSlug]);
 
-		try {
-			const data = await loadTheoryTopicDetail(userId, normalizedSlug);
-			setDetail(data);
-			await writeCache(cacheKey, data);
-		} catch (err) {
-			const message =
-				err instanceof Error
-					? err.message
-					: "Bo'lim ma'lumotini yuklashda xatolik yuz berdi.";
-			setError(message);
-			setDetail((prev) => prev);
-		} finally {
-			setIsLoading(false);
-		}
-	}, [languageKey, normalizedSlug, userId]);
+	const isInitialLoading =
+		categoriesQuery.isLoading ||
+		(!detail && categoriesQuery.isFetching);
+	const queryError = categoriesQuery.error;
+	const error =
+		queryError instanceof Error
+			? queryError.message
+			: queryError
+				? "Bo'lim ma'lumotini yuklashda xatolik yuz berdi."
+				: !isInitialLoading && normalizedSlug && !detail
+					? "Bo'lim topilmadi."
+					: "";
 
-	useEffect(() => {
-		reload().catch(() => {});
-	}, [reload]);
+	const reload = useCallback(async () => {
+		await categoriesQuery.refetch();
+	}, [categoriesQuery.refetch]);
 
-	return { detail, isLoading, error, reload };
+	return { detail, isLoading: isInitialLoading, error, reload };
 }

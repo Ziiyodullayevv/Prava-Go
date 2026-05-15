@@ -22,12 +22,16 @@ export function ToggleRow({
 		<Pressable onPress={() => onValueChange(!value)}>
 			<Box
 				className={[
-					"h-14 flex-row items-center justify-between",
+					"min-h-14 flex-row items-center justify-between py-3",
 					withDivider ? "border-b border-foreground/10" : "",
 				].join(" ")}
 			>
-				<Text className="text-base font-normal">{label}</Text>
-				<CustomSwitch value={value} onValueChange={onValueChange} />
+				<Text className="flex-1 pr-4 text-base font-normal" numberOfLines={2}>
+					{label}
+				</Text>
+				<Box className="w-[64px] items-end">
+					<CustomSwitch value={value} onValueChange={onValueChange} />
+				</Box>
 			</Box>
 		</Pressable>
 	);

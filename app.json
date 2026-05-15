@@ -1,40 +1,69 @@
 {
-	"expo": {
-		"name": "Prava Go",
-		"slug": "prava-Go",
-		"version": "1.0.0",
-		"orientation": "portrait",
-		"icon": "./assets/images/icon.png",
-		"scheme": "prava",
-		"userInterfaceStyle": "automatic",
-		"newArchEnabled": true,
-		"splash": {
-			"image": "./assets/images/splash-icon.png",
-			"resizeMode": "contain",
-			"backgroundColor": "#102448"
-		},
-		"ios": {
-			"supportsTablet": true,
-			"infoPlist": {
-				"NSPhotoLibraryUsageDescription": "Profil rasmini tanlash uchun galereyaga ruxsat kerak."
-			}
-		},
-		"android": {
-			"permissions": ["READ_MEDIA_IMAGES"],
-			"adaptiveIcon": {
-				"foregroundImage": "./assets/images/adaptive-icon.png",
-				"backgroundColor": "#102448"
-			},
-			"edgeToEdgeEnabled": true
-		},
-		"web": {
-			"bundler": "metro",
-			"output": "static",
-			"favicon": "./assets/images/favicon.png"
-		},
-		"plugins": ["expo-router", "expo-web-browser", "expo-font"],
-		"experiments": {
-			"typedRoutes": true
-		}
-	}
+  "expo": {
+    "name": "Prava X",
+    "slug": "prava-Go",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "prava",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon-white.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff",
+      "dark": {
+        "image": "./assets/images/splash-icon-dark.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#000000"
+      }
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Profil rasmini tanlash uchun galereyaga ruxsat kerak.",
+        "LSApplicationQueriesSchemes": [
+          "tg",
+          "telegram"
+        ]
+      }
+    },
+    "android": {
+      "permissions": [
+        "READ_MEDIA_IMAGES",
+        "POST_NOTIFICATIONS"
+      ],
+      "usesCleartextTraffic": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon-light.png",
+        "backgroundColor": "#ffffff",
+        "dark": {
+          "foregroundImage": "./assets/images/adaptive-icon-dark.png",
+          "backgroundColor": "#000000"
+        }
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.akobir_coder.pravaGo"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-web-browser",
+      "expo-font",
+      "expo-notifications"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d7a84cb5-3bb6-4673-869e-5932e37f340f"
+      }
+    }
+  }
 }

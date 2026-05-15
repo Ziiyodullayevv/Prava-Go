@@ -22,6 +22,7 @@ import React, {
 import { Pressable, Text } from "react-native";
 import { cssInterop } from "nativewind";
 import { tva } from "@gluestack-ui/utils/nativewind-utils";
+import { useAppTheme } from "@/contexts/theme-context";
 
 const bottomSheetBackdropStyle = tva({
 	base: "absolute inset-0 flex-1 touch-none select-none bg-blue-forground opacity-0",
@@ -204,11 +205,18 @@ type IBottomSheetDragIndicator = React.ComponentProps<typeof BottomSheetHandle>;
 export const BottomSheetDragIndicator = ({
 	children,
 	className,
+	indicatorStyle,
 	...props
 }: Partial<IBottomSheetDragIndicator> & { className?: string }) => {
+	const { colorMode } = useAppTheme();
+
 	return (
 		<BottomSheetHandle
 			{...props}
+			indicatorStyle={[
+				{ backgroundColor: colorMode === "dark" ? "#ffffff" : "#111111" },
+				indicatorStyle,
+			]}
 			// @ts-ignore
 			className={bottomSheetIndicatorStyle({
 				className: className,

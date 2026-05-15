@@ -1,9 +1,12 @@
-import React, { useMemo } from "react";
-import { Pressable, ScrollView } from "react-native";
+import React, { useCallback, useMemo, useState } from "react";
+import { FlatList, Pressable } from "react-native";
+import { NetworkErrorState } from "@/components/NetworkErrorState";
+import { YandexRippleButton } from "@/components/YandexRippleButton";
 import { useRouter } from "expo-router";
 import { ChevronLeft } from "lucide-react-native";
 
 import { Box } from "@/components/ui/box";
+import { GradientIconFrame } from "@/components/GradientIconFrame";
 import { Heading } from "@/components/ui/heading";
 import { HStack } from "@/components/ui/hstack";
 import { Skeleton, SkeletonText } from "@/components/ui/skeleton";
@@ -16,6 +19,7 @@ import {
 	StatsCardsRow,
 	TopicCard,
 } from "@/features/theory/components";
+import { TOPIC_PASS_PERCENT } from "@/features/theory/constants";
 import { useTheoryOverview } from "@/features/theory/hooks";
 import { getTopicIcon } from "@/features/theory/ui-mappers";
 import { useI18n } from "@/locales/i18n-provider";
@@ -39,40 +43,86 @@ function TopicCardSkeleton() {
 
 function buildProgressLabel(
 	topic: {
-		completed: boolean;
-		seenQuestions: number;
+		answeredQuestions: number;
+		scorePercent: number;
 		totalQuestions: number;
 	},
 	t: (key: string, fallback?: string) => string,
 ) {
-	if (topic.completed) return t("theory.completed", "Completed");
-	return `${topic.seenQuestions}/${topic.totalQuestions} ${t("common.questionsWord", "questions")}`;
+	if (topic.totalQuestions === 0) {
+		return t("theory.sectionSubtitle", "Theory section");
+	}
+	if (topic.answeredQuestions === 0) {
+		return `${topic.totalQuestions} ${t("common.questionsWord", "savol")}`;
+	}
+	return `${t("theory.score", "Ball")}: ${topic.scorePercent}%`;
 }
 
 export default function TheoryScreen() {
 	const router = useRouter();
-	const { user } = useAuth();
+	const { user, isLoading: authLoading } = useAuth();
 	const { colorMode } = useAppTheme();
 	const { language, t } = useI18n();
 	const isDark = colorMode === "dark";
 	const palette = isDark ? Colors.dark : Colors.light;
 	const text = isDark ? "#ECEDEE" : "#111111";
 	const muted = isDark ? "#b0b0b0" : "#4b4b4b";
-	const divider = isDark ? "#3f3f3f" : "#e7e7e7";
 
 	const { summary, topics, isLoading, error, reload } = useTheoryOverview(
 		user?.id,
 		language,
 	);
+	const [isRefreshing, setIsRefreshing] = useState(false);
+	const handleRefresh = useCallback(async () => {
+		setIsRefreshing(true);
+		try {
+			await reload();
+		} finally {
+			setIsRefreshing(false);
+		}
+	}, [reload]);
+	const topicItems = useMemo(() => {
+		return topics.map((topic) => {
+			const scorePercent =
+				topic.answeredQuestions > 0
+					? Math.round((topic.correctCount / topic.answeredQuestions) * 100)
+					: 0;
+			const passed = topic.answeredQuestions > 0 && scorePercent >= TOPIC_PASS_PERCENT;
+
+			return {
+				...topic,
+				isLocked: false,
+				passed,
+				scorePercent,
+			};
+		});
+	}, [topics]);
+	const showSkeleton = (authLoading || isLoading) && topics.length === 0;
+	const skeletonItems = useMemo(() => ["skeleton-1", "skeleton-2", "skeleton-3"], []);
+	type TopicListItem =
+		| { type: "skeleton"; id: string }
+		| { type: "topic"; topic: (typeof topicItems)[number] };
+	const listData = useMemo<TopicListItem[]>(() => {
+		if (showSkeleton) {
+			return skeletonItems.map((id) => ({ type: "skeleton", id }));
+		}
+		return topicItems.map((topic) => ({ type: "topic", topic }));
+	}, [showSkeleton, skeletonItems, topicItems]);
 
 	const stats = useMemo(
 		() => [
-			{ label: t("theory.topics", "Topics"), value: formatCount(summary.totalTopics) },
+			{
+				label: t("theory.topics", "Topics"),
+				value: formatCount(summary.totalTopics),
+			},
 			{
 				label: t("theory.questions", "Questions"),
 				value: formatCount(summary.totalQuestions),
 			},
-			{ label: t("theory.seen", "Seen"), value: formatCount(summary.seenQuestions) },
+			{
+				label: t("theory.seen", "Seen"),
+				value: formatCount(summary.seenQuestions),
+			},
 			{
 				label: t("theory.notSeen", "Not Seen"),
 				value: formatCount(summary.notSeenQuestions),
@@ -90,76 +140,119 @@ export default function TheoryScreen() {
 	return (
 		<Box className="flex-1 pt-safe bg-background">
 			<Box className="px-4 my-2 flex-row items-center justify-between">
-				<Pressable onPress={() => router.back()}>
-					<Box className="h-12 w-12 rounded-full items-center shadow-hard-5 justify-center bg-card">
-						<ChevronLeft size={24} color={palette.text} />
-					</Box>
-				</Pressable>
+				<Box
+					style={{
+						elevation: 1,
+						shadowColor: "#000",
+						shadowOffset: { width: 0, height: 2 },
+						shadowOpacity: isDark ? 0.14 : 0.08,
+						shadowRadius: 3,
+					}}
+				>
+					<YandexRippleButton
+						onPress={() => router.replace("/tabs/(tabs)/home")}
+						borderRadius={9999}
+					>
+						<GradientIconFrame
+							size={48}
+							borderRadius={999}
+							innerBorderRadius={999}
+						>
+							<ChevronLeft size={24} color={palette.text} />
+						</GradientIconFrame>
+					</YandexRippleButton>
+				</Box>
 
 				<Heading className="text-lg font-semibold" style={{ color: text }}>
 					{t("theory.title", "Theory")}
 				</Heading>
 
-				<ProgressRing progress={summary.progressPercent} progressColor="#0f8b5f" />
+				<ProgressRing
+					progress={summary.progressPercent}
+					progressColor="#0f8b5f"
+				/>
 			</Box>
 
-			<ScrollView
+			{error && topics.length === 0 && !showSkeleton ? (
+				<NetworkErrorState onRetry={handleRefresh} isRetrying={isRefreshing} />
+			) : (
+				<FlatList
 				showsVerticalScrollIndicator={false}
-				contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 24 }}
-			>
-				<StatsCardsRow className="mt-4" items={stats} />
+				refreshing={isRefreshing}
+				onRefresh={handleRefresh}
+				data={listData}
+				keyExtractor={(item) =>
+					item.type === "skeleton" ? item.id : item.topic.id
+				}
+				renderItem={({ item }) => {
+					if (item.type === "skeleton") {
+						return <TopicCardSkeleton />;
+					}
 
-				{error ? (
-					<Box className="mt-3 rounded-2xl bg-card px-3 py-3 border border-destructive/30">
-						<Text className="text-xs text-destructive">{error}</Text>
-						<Pressable className="mt-2" onPress={() => reload()}>
-							<Text className="text-sm font-semibold text-primary">
-								{t("common.retry", "Retry")}
-							</Text>
-						</Pressable>
-					</Box>
-				) : null}
+					return (
+						<TopicCard
+							title={item.topic.title}
+							subtitle={
+								item.topic.subtitle ||
+								t("theory.sectionSubtitle", "Theory section")
+							}
+							progressLabel={buildProgressLabel(item.topic, t)}
+							progressColor={
+								item.topic.answeredQuestions === 0
+									? muted
+									: item.topic.scorePercent >= TOPIC_PASS_PERCENT
+										? "#0f8b5f"
+										: "#ef4444"
+							}
+							completed={item.topic.passed}
+							locked={false}
+							icon={getTopicIcon(item.topic.slug)}
+							textColor={text}
+							mutedColor={muted}
+							onPress={() => {
+								router.push({
+									pathname: "/tabs/(questions)/theory/[slug]",
+									params: { slug: item.topic.slug },
+								});
+							}}
+						/>
+					);
+				}}
+				ItemSeparatorComponent={() => <Box className="h-3" />}
+				ListHeaderComponent={
+					<Box className="mt-4 mb-3">
+						{showSkeleton ? (
+							<Box className="flex-row gap-2">
+								{["s1", "s2", "s3", "s4"].map((key) => (
+									<Box
+										key={key}
+										className="flex-1 bg-secondary-foreground/5 rounded-2xl p-1"
+									>
+										<Skeleton variant="sharp" className="h-3 mt-1 mx-2" />
+										<Box className="mt-1 rounded-[14px] bg-background shadow-hard-5 py-4 px-2">
+											<Skeleton variant="sharp" className="h-5 mx-1" />
+										</Box>
+									</Box>
+								))}
+							</Box>
+						) : (
+							<StatsCardsRow items={stats} />
+						)}
 
-				<Box className="mt-3 gap-3">
-					{isLoading && topics.length === 0 ? (
-						<>
-							<TopicCardSkeleton />
-							<TopicCardSkeleton />
-							<TopicCardSkeleton />
-						</>
-					) : topics.length === 0 ? (
+								</Box>
+				}
+				ListEmptyComponent={
+					showSkeleton ? null : (
 						<Box className="rounded-3xl bg-card shadow-hard-5 px-4 py-5">
 							<Text className="text-sm text-foreground/70">
 								{t("theory.empty", "No topics found.")}
 							</Text>
 						</Box>
-					) : (
-						topics.map((topic) => (
-							<TopicCard
-								key={topic.id}
-								title={topic.title}
-								subtitle={topic.subtitle || t("theory.sectionSubtitle", "Theory section")}
-								progressLabel={buildProgressLabel(topic, t)}
-								completed={topic.completed}
-								icon={getTopicIcon(topic.slug)}
-								textColor={text}
-								mutedColor={muted}
-								onPress={() =>
-									router.push({
-										pathname: "/tabs/(questions)/theory/[slug]",
-										params: { slug: topic.slug },
-									})
-								}
-							/>
-						))
-					)}
-				</Box>
-
-				<Box
-					className="h-4"
-					style={{ borderBottomWidth: 1, borderBottomColor: divider }}
-				/>
-			</ScrollView>
+					)
+				}
+				contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 24 }}
+			/>
+			)}
 		</Box>
 	);
 }

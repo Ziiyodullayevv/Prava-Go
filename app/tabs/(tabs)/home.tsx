@@ -1,37 +1,48 @@
 import React from "react";
-import { Pressable, ScrollView, View } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import Svg, { Circle } from "react-native-svg";
-
-import { Box } from "@/components/ui/box";
+import { Image, Pressable, RefreshControl, ScrollView } from "react-native";
+import type { ImageSourcePropType } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
+import { useRouter } from "expo-router";
 import {
-	Avatar,
-	AvatarFallbackText,
-	AvatarImage,
-} from "@/components/ui/avatar";
+	Bookmark,
+	ChevronRight,
+	CircleOff,
+	Dices,
+	MedalIcon,
+	Signpost,
+} from "lucide-react-native";
+
+import { GradientIconFrame } from "@/components/GradientIconFrame";
+import HomeHeader from "@/components/home/HomeHeader";
+import MetricCard from "@/components/home/MetricCard";
+import { buildMetrics } from "@/components/home/constants";
+import { YandexRippleButton } from "@/components/YandexRippleButton";
+import {
+	getTodayMetricStatsFromSessions,
+	EMPTY_TODAY_METRIC_STATS,
+} from "@/components/home/today-stats";
+import { Box } from "@/components/ui/box";
+import { Divider } from "@/components/ui/divider";
 import { Heading } from "@/components/ui/heading";
 import { Text } from "@/components/ui/text";
-import { Image } from "@/components/ui/image";
-
-import {
-	Bell,
-	ChevronRight,
-	Clock3,
-	Dumbbell,
-	Flame,
-	Footprints,
-	Search,
-	Zap,
-} from "lucide-react-native";
 import { Colors } from "@/constants/Colors";
-import { useAppTheme } from "@/contexts/theme-context";
 import { useAuth } from "@/contexts/auth-context";
+import { useAppTheme } from "@/contexts/theme-context";
+import {
+	getUserAvatarUri,
+	getUserDisplayName,
+	getUserInitials,
+} from "@/lib/user";
+import { useDailyPlanGoals } from "@/features/daily-plan/goals";
+import { useTheoryOverview } from "@/features/theory/hooks";
+import { useQuizSessionsQuery } from "@/features/quiz/api";
+import { useTokenBalanceQuery } from "@/features/tokens/api";
+import { useI18n } from "@/locales/i18n-provider";
 
-type MetricItem = {
+type ExploreItem = {
 	id: string;
-	value: string;
-	label: string;
-	progress: number;
+	title: string;
+	description: string;
 	icon: React.ComponentType<{
 		size?: number;
 		color?: string;
@@ -39,414 +50,387 @@ type MetricItem = {
 	}>;
 };
 
-type WorkoutItem = {
-	id: string;
-	day: string;
+interface PracticeCardProps {
 	title: string;
-	reps: string;
-	duration: string;
-	energy: string;
-	image: string;
-};
-
-const metrics: MetricItem[] = [
-	{
-		id: "steps",
-		value: "3,458",
-		label: "steps",
-		progress: 24,
-		icon: Footprints,
-	},
-	{
-		id: "energy",
-		value: "548 kcal",
-		label: "energy",
-		progress: 24,
-		icon: Flame,
-	},
-	{
-		id: "activity",
-		value: "1h 25m",
-		label: "activity",
-		progress: 24,
-		icon: Dumbbell,
-	},
-];
-
-const workouts: WorkoutItem[] = [
-	{
-		id: "monday",
-		day: "Monday",
-		title: "Full Body Strength Training",
-		reps: "3x12 reps",
-		duration: "48 min",
-		energy: "280 kcal",
-		image:
-			"https://cdn3d.iconscout.com/3d/premium/thumb/driver-3d-icon-png-download-4403853.png",
-	},
-	{
-		id: "tuesday",
-		day: "Tuesday",
-		title: "Upper Body Strength",
-		reps: "2x12 reps",
-		duration: "24 min",
-		energy: "265 kcal",
-		image:
-			"https://cdn3d.iconscout.com/3d/premium/thumb/taxi-driver-man-3d-icon-png-download-5250839.png",
-	},
-];
-
-const METRIC_RING_COLOR = "#F6B81D";
-
-function colorWithAlpha(color: string, alpha: number) {
-	const normalized = color.trim();
-	if (normalized.startsWith("rgb(")) {
-		const values = normalized
-			.replace("rgb(", "")
-			.replace(")", "")
-			.split(",")
-			.map((item) => item.trim())
-			.slice(0, 3);
-		if (values.length === 3) {
-			return `rgba(${values[0]}, ${values[1]}, ${values[2]}, ${alpha})`;
-		}
-	}
-
-	if (normalized.startsWith("#")) {
-		const hex = normalized.slice(1);
-		const fullHex =
-			hex.length === 3
-				? `${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`
-				: hex;
-		if (fullHex.length === 6) {
-			const r = Number.parseInt(fullHex.slice(0, 2), 16);
-			const g = Number.parseInt(fullHex.slice(2, 4), 16);
-			const b = Number.parseInt(fullHex.slice(4, 6), 16);
-			return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-		}
-	}
-
-	return color;
+	leftLabel: string;
+	rightValue: string;
+	progress: number;
+	image: ImageSourcePropType;
+	badgeLabel?: string;
+	onPress?: () => void;
 }
 
-function MetricCard({
-	item,
-	palette,
-}: {
-	item: MetricItem;
-	palette: (typeof Colors)["light"] | (typeof Colors)["dark"];
-}) {
-	const Icon = item.icon;
-	const size = 55;
-	const strokeWidth = 2;
-	const radius = (size - strokeWidth) / 2;
-	const circumference = 2 * Math.PI * radius;
-	const clampedProgress = Math.max(0, Math.min(100, item.progress));
-	const dashOffset = circumference * (1 - clampedProgress / 100);
+const HOME_HEADER_PHRASE_COUNT = 12;
 
-	return (
-		<Box className="flex-1 rounded-[28px] bg-card p-2">
-			<Box className="relative ml-0.5 mt-0.5 shadow-lg h-[55px] w-[55px] rounded-full items-center justify-center">
-				<Svg width={size} height={size} style={{ position: "absolute" }}>
-					<Circle
-						cx={size / 2}
-						cy={size / 2}
-						r={radius}
-						stroke={colorWithAlpha(palette.tabIconDefault, 0.2)}
-						strokeWidth={strokeWidth}
-						fill="none"
-					/>
-					<Circle
-						cx={size / 2}
-						cy={size / 2}
-						r={radius}
-						stroke={METRIC_RING_COLOR}
-						strokeWidth={strokeWidth}
-						fill="none"
-						strokeLinecap="round"
-						strokeDasharray={`${circumference} ${circumference}`}
-						strokeDashoffset={dashOffset}
-						transform={`rotate(-90 ${size / 2} ${size / 2})`}
-					/>
-				</Svg>
-				<Box className="w-10 h-10 bg-foreground/10 justify-center items-center rounded-full">
-					<Icon size={19} color={palette.text} strokeWidth={2} />
-				</Box>
-			</Box>
-
-			<Box className="px-2 py-3">
-				<Text
-					className="text-base font-semibold"
-					style={{ color: palette.text }}
-					numberOfLines={1}
-					adjustsFontSizeToFit
-					minimumFontScale={0.78}
-				>
-					{item.value}
-				</Text>
-				<Text className="text-xs" style={{ color: palette.tabIconDefault }}>
-					{item.label}
-				</Text>
-			</Box>
-		</Box>
-	);
+function clamp01(value: number) {
+	return Math.min(1, Math.max(0, value));
 }
 
-function WorkoutCard({
-	item,
-	palette,
-	isDark,
-	index,
-}: {
-	item: WorkoutItem;
-	palette: (typeof Colors)["light"] | (typeof Colors)["dark"];
-	isDark: boolean;
-	index: number;
-}) {
-	const textOnCard = isDark ? Colors.dark.text : Colors.light.background;
-	const gradientColors: [string, string] =
-		index % 2 === 0
-			? [
-					colorWithAlpha(palette.tint, isDark ? 0.42 : 0.32),
-					colorWithAlpha(palette.tint, isDark ? 0.75 : 0.56),
-				]
-			: [
-					colorWithAlpha(palette.tabIconDefault, isDark ? 0.58 : 0.34),
-					colorWithAlpha(palette.tint, isDark ? 0.52 : 0.42),
-				];
-
+function PracticeCard({
+	title,
+	image,
+	leftLabel,
+	rightValue,
+	progress,
+	badgeLabel,
+	onPress,
+}: PracticeCardProps) {
 	return (
-		<LinearGradient
-			colors={gradientColors}
-			start={{ x: 0, y: 0 }}
-			end={{ x: 1, y: 1 }}
-			style={{
-				borderRadius: 24,
-				overflow: "hidden",
-				minHeight: 200,
-				padding: 16,
-				position: "relative",
-			}}
+		<YandexRippleButton
+			className="flex-1"
+			onPress={onPress}
+			disabled={!onPress}
+			disableFeedback={!onPress}
+			borderRadius={24}
+			rippleOpacity={0.06}
 		>
-			<Image
-				className="absolute right-0 bottom-0 w-[150px] h-[150px]"
-				source={{ uri: item.image }}
-				alt={item.title}
-				resizeMode="cover"
-			/>
-
-			<Box className="max-w-[70%]">
-				<Box
-					className="self-start rounded-full px-3 py-1.5"
-					style={{
-						borderWidth: 1,
-						borderColor: colorWithAlpha(textOnCard, 0.35),
-						backgroundColor: colorWithAlpha(textOnCard, 0.12),
-					}}
-				>
-					<Text className="text-sm font-medium" style={{ color: textOnCard }}>
-						{item.day}
-					</Text>
+			<Box className="flex-1 bg-card w-full shadow-soft-1 rounded-3xl px-4 py-4">
+				{badgeLabel ? (
+					<Box className="absolute right-3 top-3 z-10 rounded-full bg-[#ff9f2f]/20 px-2.5 py-1">
+						<Text className="text-[10px] font-semibold text-[#ff9f2f]">
+							{badgeLabel}
+						</Text>
+					</Box>
+				) : null}
+				<Box className="flex-row -mt-1 mx-auto justify-center">
+					<Image className="w-[80px] h-[80px]" source={image} />
 				</Box>
 
-				<Heading
-					className="mt-3 text-2xl font-semibold leading-8"
-					style={{ color: textOnCard }}
-				>
-					{item.title}
+				<Heading className="text-base text-center font-semibold">
+					{title}
 				</Heading>
-			</Box>
 
-			<Box className="mt-5 flex-row items-center gap-2">
-				<Box
-					className="rounded-full px-3 py-1.5"
-					style={{ backgroundColor: colorWithAlpha(textOnCard, 0.16) }}
-				>
-					<Text className="text-sm font-medium" style={{ color: textOnCard }}>
-						{item.reps}
-					</Text>
+				<Box className="mt-3 flex-row items-center justify-between">
+					<Text className="text-[12px]">{leftLabel}</Text>
+					<Text className="text-[12px] font-semibold">{rightValue}</Text>
 				</Box>
-				<Box
-					className="rounded-full px-3 py-1.5 flex-row items-center gap-1"
-					style={{ backgroundColor: colorWithAlpha(textOnCard, 0.16) }}
-				>
-					<Clock3 size={14} color={textOnCard} />
-					<Text className="text-sm font-medium" style={{ color: textOnCard }}>
-						{item.duration}
-					</Text>
-				</Box>
-				<Box
-					className="rounded-full px-3 py-1.5 flex-row items-center gap-1"
-					style={{ backgroundColor: colorWithAlpha(textOnCard, 0.16) }}
-				>
-					<Zap size={14} color={textOnCard} />
-					<Text className="text-sm font-medium" style={{ color: textOnCard }}>
-						{item.energy}
-					</Text>
+
+				<Box className="mt-2 h-2 rounded-full bg-background overflow-hidden">
+					<Box
+						className="h-full rounded-full bg-teal-900"
+						style={{ width: `${clamp01(progress) * 100}%` }}
+					/>
 				</Box>
 			</Box>
-		</LinearGradient>
+		</YandexRippleButton>
 	);
 }
 
 export default function HomeScreen() {
+	const router = useRouter();
 	const { colorMode } = useAppTheme();
 	const { user } = useAuth();
+	const { language, t } = useI18n();
 	const isDark = colorMode === "dark";
 	const palette = isDark ? Colors.dark : Colors.light;
 
-	const rawNameFromMeta =
-		typeof user?.user_metadata?.given_name === "string" &&
-		user.user_metadata.given_name.trim().length > 0
-			? user.user_metadata.given_name
-			: typeof user?.user_metadata?.full_name === "string" &&
-				  user.user_metadata.full_name.trim().length > 0
-				? user.user_metadata.full_name
-				: typeof user?.user_metadata?.name === "string" &&
-					  user.user_metadata.name.trim().length > 0
-					? user.user_metadata.name
-					: "";
-
-	const firstNameFromMeta = rawNameFromMeta.split(/\s+/)[0] ?? "";
-	const firstNameFromEmail = (user?.email?.split("@")[0] ?? "Foydalanuvchi")
-		.split(/[._-]/)[0]
-		.trim();
-	const displayName =
-		firstNameFromMeta.trim().length > 0
-			? firstNameFromMeta
-			: firstNameFromEmail;
+	const displayName = getUserDisplayName(
+		user,
+		t("home.userFallback", "Foydalanuvchi"),
+	);
 
 	const [now, setNow] = React.useState(() => new Date());
+	const [isRefreshing, setIsRefreshing] = React.useState(false);
+	const { goals: dailyPlanGoals, reload: reloadDailyPlanGoals } =
+		useDailyPlanGoals();
+	const sessionsQuery = useQuizSessionsQuery(Boolean(user?.id));
+	const tokenBalanceQuery = useTokenBalanceQuery(Boolean(user?.id));
+	const { data: sessions = [], refetch: refetchSessions } = sessionsQuery;
+	const { refetch: refetchTokenBalance } = tokenBalanceQuery;
+	const { summary, topics, reload: reloadTheoryOverview } = useTheoryOverview(
+		user?.id,
+		language,
+	);
 	React.useEffect(() => {
 		const interval = setInterval(() => setNow(new Date()), 60_000);
 		return () => clearInterval(interval);
 	}, []);
 
-	const subtitle = React.useMemo(() => {
-		const hour = now.getHours();
-		if (hour >= 5 && hour < 12) return "Hayrli tong";
-		if (hour >= 12 && hour < 18) return "Hayrli kun";
-		if (hour >= 18 && hour < 23) return "Hayrli kech";
-		return "Hayrli tun";
-	}, [now]);
+	useFocusEffect(
+		React.useCallback(() => {
+			reloadDailyPlanGoals().catch(() => {});
+			reloadTheoryOverview().catch(() => {});
 
-	const rawAvatar =
-		user?.user_metadata?.avatar_url ?? user?.user_metadata?.picture;
-	const avatarUri =
-		typeof rawAvatar === "string" && rawAvatar.trim().length > 0
-			? rawAvatar
-			: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=687&q=80";
+			if (user?.id) {
+				refetchSessions().catch(() => {});
+				refetchTokenBalance().catch(() => {});
+			}
+		}, [
+			refetchSessions,
+			refetchTokenBalance,
+			reloadDailyPlanGoals,
+			reloadTheoryOverview,
+			user?.id,
+		]),
+	);
+
+	const handleRefresh = React.useCallback(async () => {
+		if (isRefreshing) return;
+		setIsRefreshing(true);
+
+		try {
+			await Promise.all([
+				reloadDailyPlanGoals(),
+				reloadTheoryOverview(),
+				...(user?.id
+					? [refetchSessions(), refetchTokenBalance()]
+					: []),
+			]);
+		} finally {
+			setIsRefreshing(false);
+		}
+	}, [
+		isRefreshing,
+		refetchSessions,
+		refetchTokenBalance,
+		reloadDailyPlanGoals,
+		reloadTheoryOverview,
+		user?.id,
+	]);
+
+	const subtitle = React.useMemo(() => {
+		const dayIndex = Math.floor(now.getTime() / 86_400_000);
+		const phraseIndex = dayIndex % HOME_HEADER_PHRASE_COUNT;
+		return t(`home.motivation.${phraseIndex}`, "Olg'a");
+	}, [now, t]);
+
+	const avatarUri = getUserAvatarUri(user);
+	const avatarFallback = getUserInitials(user);
+
+	const todayStats = React.useMemo(() => {
+		if (sessions.length === 0) return EMPTY_TODAY_METRIC_STATS;
+		return getTodayMetricStatsFromSessions(sessions, now);
+	}, [now, sessions]);
+
+	const metrics = React.useMemo(
+		() => buildMetrics(todayStats, t, dailyPlanGoals),
+		[dailyPlanGoals, t, todayStats],
+	);
+	const completedTopics = React.useMemo(
+		() => topics.filter((topic) => topic.completed).length,
+		[topics],
+	);
+	const totalTopics = summary.totalTopics;
+	const theoryProgress = totalTopics > 0 ? completedTopics / totalTopics : 0;
+	const exploreItems = React.useMemo<ExploreItem[]>(
+		() => [
+			{
+				id: "random",
+				title: t("practice.explore.random.title", "Tasodifiy savollar"),
+				description: t(
+					"practice.explore.random.description",
+					"Aralash savollarni mashq qiling",
+				),
+				icon: Dices,
+			},
+			{
+				id: "mistakes",
+				title: t("practice.explore.mistakes.title", "Xatolar"),
+				description: t(
+					"practice.explore.mistakes.description",
+					"Noto'g'ri ishlagan savollarni qayta yeching",
+				),
+				icon: CircleOff,
+			},
+			{
+				id: "bookmarks",
+				title: t("practice.explore.bookmarks.title", "Saqlanganlar"),
+				description: t(
+					"practice.explore.bookmarks.description",
+					"Saqlangan savollarga qayting",
+				),
+				icon: Bookmark,
+			},
+			{
+				id: "marathon",
+				title: t("practice.explore.marathon.title", "Marafon"),
+				description: t("practice.explore.marathon.description", "50-150 savol"),
+				icon: MedalIcon,
+			},
+			{
+				id: "signs",
+				title: t("practice.explore.signs.title", "Belgilar"),
+				description: t(
+					"practice.explore.signs.description",
+					"Yo'l belgilarini o'rganing",
+				),
+				icon: Signpost,
+			},
+		],
+		[t],
+	);
+	const handleExplorePress = React.useCallback(
+		(itemId: string) => {
+			if (itemId === "random") {
+				router.navigate({
+					pathname: "/tabs/(questions)/marathon",
+					params: { mode: "random", count: "10" },
+				});
+				return;
+			}
+			if (itemId === "bookmarks") {
+				router.navigate("/tabs/(questions)/bookmarks");
+				return;
+			}
+			if (itemId === "mistakes") {
+				router.navigate("/tabs/(questions)/mistakes");
+				return;
+			}
+			if (itemId === "marathon") {
+				router.navigate("/tabs/(questions)/marathon");
+				return;
+			}
+			if (itemId === "signs") {
+				router.navigate("/tabs/(questions)/signs");
+			}
+		},
+		[router],
+	);
 
 	return (
 		<Box className="pt-safe flex-1 bg-background">
 			<ScrollView
 				showsVerticalScrollIndicator={false}
-				contentContainerStyle={{ paddingBottom: 24, paddingTop: 8 }}
+				contentContainerStyle={{ paddingBottom: 120, paddingTop: 8 }}
+				refreshControl={
+					<RefreshControl
+						refreshing={isRefreshing}
+						onRefresh={handleRefresh}
+						tintColor={palette.tint}
+						colors={[palette.tint]}
+						progressBackgroundColor={colorMode === "dark" ? "#202020" : "#ffffff"}
+					/>
+				}
 			>
-				<Box className="mx-4 android:mt-3 flex-row items-center justify-between">
-					<Box className="flex-1 flex-row items-center gap-3">
-						<Avatar className="h-12 w-12">
-							<AvatarFallbackText>{displayName}</AvatarFallbackText>
-							<AvatarImage source={{ uri: avatarUri }} />
-						</Avatar>
-
-						<Box className="flex-1 min-w-0">
-							<Text
-								numberOfLines={1}
-								ellipsizeMode="tail"
-								className="text-sm"
-								style={{ color: palette.tabIconDefault }}
-							>
-								{`${subtitle},`}
-							</Text>
-							<Heading
-								numberOfLines={1}
-								ellipsizeMode="tail"
-								className="text-xl font-semibold"
-							>
-								{displayName}
-							</Heading>
-						</Box>
-					</Box>
-
-					<Box className="flex-row items-center gap-3">
-						<Pressable>
-							<Box className="h-12 w-12 border border-border rounded-full items-center justify-center">
-								<Search size={20} color={palette.text} strokeWidth={2} />
-							</Box>
-						</Pressable>
-
-						<Pressable>
-							<Box className="h-12 w-12 rounded-full border-border border items-center justify-center">
-								<Bell size={20} color={palette.text} strokeWidth={2} />
-								<View
-									style={{
-										position: "absolute",
-										right: 14,
-										top: 14,
-										height: 8,
-										width: 8,
-										borderRadius: 999,
-										backgroundColor: palette.tint,
-									}}
-								/>
-							</Box>
-						</Pressable>
-					</Box>
-				</Box>
+				<HomeHeader
+					avatarFallback={avatarFallback}
+					displayName={displayName}
+					subtitle={subtitle}
+					avatarUri={avatarUri}
+					palette={palette}
+					tokenBalance={tokenBalanceQuery.data?.balance}
+					isTokenBalanceLoading={tokenBalanceQuery.isLoading}
+					onNotificationPress={() => router.push("/tabs/notifications")}
+				/>
 
 				<Box className="mt-6 mx-4 flex-row items-center justify-between">
-					<Heading
-						className="text-2xl font-semibold"
+					<Text
+						className="text-lg font-semibold"
 						style={{ color: palette.text }}
 					>
-						Today
-					</Heading>
-					<Pressable className="flex-row items-center gap-1">
+						{t("home.todayPlan", "Kunlik reja")}
+					</Text>
+					<Pressable
+						className="flex-row items-center gap-1"
+						hitSlop={10}
+						onPress={() => router.push("/tabs/(questions)/daily-plan")}
+					>
 						<Text
-							className="text-base font-medium"
+							className="text-sm font-medium"
 							style={{ color: palette.tint }}
 						>
-							Activity
+							{t("home.addPlan", "Reja qo'shish")}
 						</Text>
 						<ChevronRight size={18} color={palette.tint} />
 					</Pressable>
 				</Box>
 
-				<Box className="mx-4 mt-4 flex-row items-center gap-2">
+				<Box className="mx-4 mt-3 flex-row items-stretch gap-2">
 					{metrics.map((item) => (
 						<MetricCard key={item.id} item={item} palette={palette} />
 					))}
 				</Box>
 
-				<Box className="mt-7 mx-4 flex-row items-center justify-between">
-					<Heading
-						className="text-2xl font-semibold"
-						style={{ color: palette.text }}
-					>
-						Workout Plan
-					</Heading>
-					<Pressable className="flex-row items-center gap-1">
-						<Text
-							className="text-base font-medium"
-							style={{ color: palette.tint }}
-						>
-							View all
-						</Text>
-						<ChevronRight size={18} color={palette.tint} />
-					</Pressable>
+				<Text
+					className="mx-4 mt-4 text-lg font-semibold"
+					style={{ color: palette.text }}
+				>
+					{t("home.workoutPlans", "Mashg'ulotlar")}
+				</Text>
+
+				<Box className="mt-3 mx-4 flex-row gap-3">
+					<PracticeCard
+						title={t("theory.title", "Nazariya")}
+						leftLabel={t("practice.completedShort", "Yechilgan")}
+						rightValue={`${completedTopics}/${totalTopics}`}
+						progress={theoryProgress}
+						image={require("../../../assets/images/practice/books-ilustration.webp")}
+						onPress={() => router.navigate("/tabs/(questions)/theory")}
+					/>
+					<PracticeCard
+						title={t("practice.hazardClips", "Kliplar")}
+						leftLabel={t("practice.clips", "Kliplar")}
+						rightValue="0/0"
+						progress={0}
+						image={require("../../../assets/images/practice/movies.webp")}
+						badgeLabel={t("common.comingSoon", "Tez kunda")}
+					/>
 				</Box>
 
-				<Box className="mt-4 mx-4 gap-4">
-					{workouts.map((item, index) => (
-						<WorkoutCard
-							key={item.id}
-							item={item}
-							palette={palette}
-							isDark={isDark}
-							index={index}
-						/>
-					))}
+				<YandexRippleButton
+					className="mx-4 mt-3"
+					onPress={() => router.navigate("/tabs/(questions)/exam")}
+					borderRadius={24}
+					rippleOpacity={0.06}
+				>
+					<Box className="rounded-3xl shadow-soft-1 px-4 bg-card py-4 flex-row items-center">
+						<Box className="items-center justify-center">
+							<Image
+								className="w-[60px] h-[60px]"
+								source={require("../../../assets/images/practice/certificate.png")}
+							/>
+						</Box>
+
+						<Box className="flex-1 ml-4 pr-2">
+							<Heading className="text-base font-semibold">
+								{t("practice.mockExam", "Sinov imtihoni")}
+							</Heading>
+							<Text className="text-[12px] leading-5 mt-1">
+								{t(
+									"practice.mockExamDescription",
+									"Nazariya va xavfli holatlar bo'yicha bilimingizni tekshiring",
+								)}
+							</Text>
+						</Box>
+
+						<ChevronRight size={24} color={palette.tabIconDefault} />
+					</Box>
+				</YandexRippleButton>
+
+				<Text className="text-lg mx-4 mt-4 font-semibold">
+					{t("practice.moreToExplore", "Yana bo'limlar")}
+				</Text>
+
+				<Box className="mx-4 mt-3 rounded-3xl shadow-soft-5 bg-card overflow-hidden">
+					{exploreItems.map((item, index) => {
+						const Icon = item.icon;
+						const isLast = index === exploreItems.length - 1;
+						const isFirst = index === 0;
+						return (
+							<YandexRippleButton
+								key={item.id}
+								onPress={() => handleExplorePress(item.id)}
+								borderRadius={isFirst || isLast ? 24 : 0}
+								rippleOpacity={0.05}
+							>
+								<Box className="px-4 py-4 flex-row items-center">
+									<GradientIconFrame>
+										<Icon size={20} color={palette.text} />
+									</GradientIconFrame>
+
+									<Box className="flex-1 ml-4">
+										<Heading className="text-sm font-semibold">
+											{item.title}
+										</Heading>
+										<Text className="text-[12px] mt-1">{item.description}</Text>
+									</Box>
+
+									<ChevronRight size={22} color={palette.text} />
+								</Box>
+								{!isLast ? <Divider className="mx-4" /> : null}
+							</YandexRippleButton>
+						);
+					})}
 				</Box>
 			</ScrollView>
 		</Box>

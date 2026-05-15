@@ -38,9 +38,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 	// 1) load saved mode on mount
 	useEffect(() => {
+		let isMounted = true;
+
 		(async () => {
 			try {
 				const savedPreference = await AsyncStorage.getItem(STORAGE_KEY);
+				if (!isMounted) return;
 				if (
 					savedPreference === "system" ||
 					savedPreference === "light" ||
@@ -53,6 +56,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 				const legacySavedPreference = await AsyncStorage.getItem(
 					LEGACY_STORAGE_KEY,
 				);
+				if (!isMounted) return;
 				if (
 					legacySavedPreference === "light" ||
 					legacySavedPreference === "dark"
@@ -60,9 +64,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 					setThemePreferenceState(legacySavedPreference);
 				}
 			} finally {
-				setIsReady(true);
+				if (isMounted) setIsReady(true);
 			}
 		})();
+
+		return () => {
+			isMounted = false;
+		};
 	}, []);
 
 	// 2) persist on change (when ready)

@@ -1,13 +1,15 @@
 import React from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import { BellRing, ChevronRight } from "lucide-react-native";
 
+import { YandexRippleButton } from "@/components/YandexRippleButton";
 import { Box } from "@/components/ui/box";
 import { Divider } from "@/components/ui/divider";
 import { Heading } from "@/components/ui/heading";
 import { Text } from "@/components/ui/text";
 import { CustomSwitch } from "@/components/CustomSwitch";
 import { RowItem, ThemeColors } from "../types";
+import { SettingsIconFrame } from "./SettingsIconFrame";
 
 type SettingsRowsCardProps = {
 	rows: RowItem[];
@@ -29,29 +31,32 @@ export function SettingsRowsCard({
 	pushSubtitle,
 }: SettingsRowsCardProps) {
 	return (
-		<Box className="mt-3 rounded-3xl shadow-soft-5 bg-card overflow-hidden">
+		<Box className="mt-3 rounded-3xl bg-card overflow-hidden">
 			{rows.map((item, index) => {
 				const ItemIcon = item.icon;
 				const isLast = index === rows.length - 1;
 
 				return (
-					<Pressable
+					<YandexRippleButton
 						key={item.id}
 						onPress={item.onPress}
-						style={({ pressed }) => ({
-							backgroundColor: pressed
-								? colors.pressedRowBg
-								: "transparent",
-						})}
-						android_ripple={{ color: colors.pressedRowBg }}
+						borderRadius={0}
+						rippleOpacity={0.05}
 					>
 						<Box className="px-4 py-4 flex-row items-center">
-							<Box className="h-10 w-10 rounded-xl bg-card-custom shadow-soft-5 items-center justify-center">
-								<ItemIcon size={22} color={colors.iconColor} strokeWidth={1.9} />
-							</Box>
+							<SettingsIconFrame>
+								<ItemIcon
+									size={20}
+									color={colors.iconColor}
+									strokeWidth={1.9}
+								/>
+							</SettingsIconFrame>
 
 							<Box className="ml-4 flex-1 pr-2" style={{ minWidth: 0 }}>
-								<Heading className="text-sm font-semibold" style={{ flexShrink: 1 }}>
+								<Heading
+									className="text-sm font-semibold"
+									style={{ flexShrink: 1 }}
+								>
 									{item.title}
 								</Heading>
 								{item.subtitle ? (
@@ -67,25 +72,27 @@ export function SettingsRowsCard({
 							<ChevronRight size={22} color={colors.iconColor} />
 						</Box>
 						{!isLast ? <Divider className="mx-4" /> : null}
-					</Pressable>
+					</YandexRippleButton>
 				);
 			})}
 
 			{rows.length > 0 ? <Divider className="mx-4" /> : null}
-			<Pressable
+
+			<YandexRippleButton
 				onPress={onTogglePush}
-				style={({ pressed }) => ({
-					backgroundColor: pressed ? colors.pressedRowBg : "transparent",
-				})}
-				android_ripple={{ color: colors.pressedRowBg }}
+				borderRadius={0}
+				rippleOpacity={0.05}
 			>
 				<Box className="px-4 py-4 flex-row items-center">
-					<Box className="h-10 w-10 rounded-xl bg-card-custom shadow-soft-5 items-center justify-center">
-						<BellRing size={22} color={colors.iconColor} strokeWidth={1.9} />
-					</Box>
+					<SettingsIconFrame>
+						<BellRing size={20} color={colors.iconColor} strokeWidth={1.9} />
+					</SettingsIconFrame>
 
 					<Box className="ml-4 flex-1 pr-2" style={{ minWidth: 0 }}>
-						<Heading className="text-sm font-semibold" style={{ flexShrink: 1 }}>
+						<Heading
+							className="text-sm font-semibold"
+							style={{ flexShrink: 1 }}
+						>
 							{pushTitle}
 						</Heading>
 						{pushSubtitle ? (
@@ -109,7 +116,7 @@ export function SettingsRowsCard({
 						/>
 					</View>
 				</Box>
-			</Pressable>
+			</YandexRippleButton>
 		</Box>
 	);
 }

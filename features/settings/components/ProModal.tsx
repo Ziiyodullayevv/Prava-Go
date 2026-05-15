@@ -108,7 +108,7 @@ export function ProModal({
 						<Box className="flex-row items-center gap-2">
 							<StatusBar hidden />
 							<Heading className="text-white mx-auto text-2xl font-semibold">
-								Prava Go
+								Prava X
 							</Heading>
 						</Box>
 

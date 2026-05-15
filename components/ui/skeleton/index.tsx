@@ -3,6 +3,8 @@ import type { VariantProps } from '@gluestack-ui/utils/nativewind-utils';
 import { View } from 'react-native';
 import { skeletonStyle, skeletonTextStyle } from './styles';
 
+const DEFAULT_SKELETON_COLOR = 'bg-accent dark:bg-[#4f4f4f]';
+
 type ISkeletonProps = React.ComponentProps<typeof View> &
   VariantProps<typeof skeletonStyle> & {
     isLoaded?: boolean;
@@ -23,7 +25,7 @@ const Skeleton = forwardRef<React.ComponentRef<typeof View>, ISkeletonProps>(
       className,
       variant,
       children,
-      startColor = 'bg-accent',
+      startColor = DEFAULT_SKELETON_COLOR,
       isLoaded = false,
       speed = 4,
       ...props
@@ -56,7 +58,7 @@ const SkeletonText = forwardRef<
     className,
     _lines,
     isLoaded = false,
-    startColor = 'bg-accent',
+    startColor = DEFAULT_SKELETON_COLOR,
     gap = 2,
     children,
     ...props

@@ -23,24 +23,13 @@ export function useTheoryTestSettings() {
 
 		(async () => {
 			try {
-				const [showOnlyMistakes, shuffleQuestions, autoAdvance] =
-					await Promise.all([
-						AsyncStorage.getItem(SETTINGS_KEYS.showMistakesOnly),
-						AsyncStorage.getItem(SETTINGS_KEYS.shuffleQuestions),
-						AsyncStorage.getItem(SETTINGS_KEYS.autoAdvance),
-					]);
+				const [autoAdvance] = await Promise.all([
+					AsyncStorage.getItem(SETTINGS_KEYS.autoAdvance),
+				]);
 
 				if (cancelled) return;
 
 				setSettings({
-					showMistakesOnly: fromStorageValue(
-						showOnlyMistakes,
-						DEFAULT_TEST_SETTINGS.showMistakesOnly,
-					),
-					shuffleQuestions: fromStorageValue(
-						shuffleQuestions,
-						DEFAULT_TEST_SETTINGS.shuffleQuestions,
-					),
 					autoAdvance: fromStorageValue(
 						autoAdvance,
 						DEFAULT_TEST_SETTINGS.autoAdvance,
@@ -56,20 +45,6 @@ export function useTheoryTestSettings() {
 		};
 	}, []);
 
-	const setShowMistakesOnly = useCallback((value: boolean) => {
-		setSettings((prev) => ({ ...prev, showMistakesOnly: value }));
-		AsyncStorage.setItem(SETTINGS_KEYS.showMistakesOnly, toStorageValue(value)).catch(
-			() => {},
-		);
-	}, []);
-
-	const setShuffleQuestions = useCallback((value: boolean) => {
-		setSettings((prev) => ({ ...prev, shuffleQuestions: value }));
-		AsyncStorage.setItem(SETTINGS_KEYS.shuffleQuestions, toStorageValue(value)).catch(
-			() => {},
-		);
-	}, []);
-
 	const setAutoAdvance = useCallback((value: boolean) => {
 		setSettings((prev) => ({ ...prev, autoAdvance: value }));
 		AsyncStorage.setItem(SETTINGS_KEYS.autoAdvance, toStorageValue(value)).catch(
@@ -81,10 +56,8 @@ export function useTheoryTestSettings() {
 		() => ({
 			settings,
 			isReady,
-			setShowMistakesOnly,
-			setShuffleQuestions,
 			setAutoAdvance,
 		}),
-		[settings, isReady, setShowMistakesOnly, setShuffleQuestions, setAutoAdvance],
+		[settings, isReady, setAutoAdvance],
 	);
 }

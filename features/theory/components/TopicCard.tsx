@@ -1,8 +1,9 @@
 import React from "react";
 import { Pressable } from "react-native";
 import type { ComponentType } from "react";
-import { ChevronRight, CircleCheck, CircleHelp } from "lucide-react-native";
+import { ChevronRight, CircleCheck, CircleHelp, Lock } from "lucide-react-native";
 
+import { GradientIconFrame } from "@/components/GradientIconFrame";
 import { Box } from "@/components/ui/box";
 import { Heading } from "@/components/ui/heading";
 import { Text } from "@/components/ui/text";
@@ -17,46 +18,60 @@ type TopicCardProps = {
 	title: string;
 	subtitle: string;
 	progressLabel: string;
+	progressColor?: string;
 	completed: boolean;
 	icon: TopicIcon;
 	textColor: string;
 	mutedColor: string;
 	onPress: () => void;
+	locked?: boolean;
 };
 
 export function TopicCard({
 	title,
 	subtitle,
 	progressLabel,
+	progressColor,
 	completed,
 	icon: Icon,
 	textColor,
 	mutedColor,
 	onPress,
+	locked = false,
 }: TopicCardProps) {
+	const lockedIconColor = "#F59E0B";
+	const resolvedProgressColor = progressColor ?? (completed ? "#0f8b5f" : mutedColor);
+
 	return (
-		<Pressable onPress={onPress}>
-			<Box className="rounded-3xl bg-card shadow-hard-5 px-4 py-4">
-				<Box className="flex-row items-start">
-					<Box className="rounded-xl w-[45px] bg-background h-[45px] items-center justify-center">
-						<Icon size={24} color={textColor} strokeWidth={1.9} />
-					</Box>
+		<Pressable onPress={onPress} disabled={locked}>
+			<Box
+				className={[
+					"rounded-3xl bg-card shadow-hard-5 px-4 py-4",
+					locked ? "opacity-70" : "",
+				].join(" ")}
+			>
+				<Box className="flex-row items-start gap-2">
+					<GradientIconFrame>
+						{locked ? (
+							<Lock size={20} color={lockedIconColor} strokeWidth={2.1} />
+						) : (
+							<Icon size={20} color={textColor} strokeWidth={1.9} />
+						)}
+					</GradientIconFrame>
 
 					<Box className="ml-4 flex-1">
-						<Heading className="text-base font-semibold">{title}</Heading>
+						<Heading className="text-sm font-semibold">{title}</Heading>
 						<Text className="mt-1 text-sm text-foreground/70">{subtitle}</Text>
 
 						<Box className="mt-3 flex-row items-center gap-2">
 							{completed ? (
-								<CircleCheck size={18} color="#0f8b5f" />
+								<CircleCheck size={18} color={resolvedProgressColor} />
 							) : (
-								<CircleHelp size={18} color={mutedColor} />
+								<CircleHelp size={18} color={resolvedProgressColor} />
 							)}
 							<Text
-								className={["text-sm", completed ? "text-emerald-700" : ""].join(
-									" ",
-								)}
-								style={completed ? undefined : { color: mutedColor }}
+								className="text-sm"
+								style={{ color: resolvedProgressColor }}
 							>
 								{progressLabel}
 							</Text>

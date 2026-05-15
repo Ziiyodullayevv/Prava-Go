@@ -50,7 +50,7 @@ export default function TabBarButton({
 	}, [scale, isFocused]);
 
 	const animatedTextStyle = useAnimatedStyle(() => {
-		const opacity = interpolate(scale.value, [0, 1], [1, 0]);
+		const opacity = interpolate(scale.value, [0, 1], [1, 0.92]);
 
 		return {
 			opacity,
@@ -58,7 +58,7 @@ export default function TabBarButton({
 	});
 
 	const animatedIconStyle = useAnimatedStyle(() => {
-		const scaleValue = interpolate(scale.value, [0, 1], [1, 1.1]);
+		const scaleValue = interpolate(scale.value, [0, 1], [1, 1.04]);
 		const translateY = interpolate(scale.value, [0, 1], [0, activeTranslateY]);
 
 		return {
@@ -79,13 +79,13 @@ export default function TabBarButton({
 			onPress={onPress}
 			onLongPress={onLongPress}
 			style={[
-				{ alignItems: "center", justifyContent: "center", paddingVertical: 2 },
+				{ alignItems: "center", justifyContent: "center", paddingVertical: 0 },
 				style,
 			]}
 		>
 			<Animated.View
 				style={[
-					{ minHeight: 22, alignItems: "center", justifyContent: "center" },
+					{ minHeight: 20, alignItems: "center", justifyContent: "center" },
 					animatedIconStyle,
 				]}
 			>
@@ -97,9 +97,9 @@ export default function TabBarButton({
 				style={[
 					{
 						color: tintColor,
-						marginTop: 4,
-						fontSize: 11,
-						lineHeight: 13,
+						marginTop: 2,
+						fontSize: 10,
+						lineHeight: 12,
 						fontWeight: "600",
 						textAlign: "center",
 					},

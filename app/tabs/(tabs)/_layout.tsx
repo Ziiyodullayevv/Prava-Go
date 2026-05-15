@@ -1,7 +1,7 @@
 import React from "react";
 import { Tabs } from "expo-router";
 import { CustomTabBar } from "@/components/CustomTabBar";
-import { Award, Home, Settings } from "lucide-react-native";
+import { Home, Search, Settings, Trophy } from "lucide-react-native";
 import { useI18n } from "@/locales/i18n-provider";
 
 export default function TabLayout() {
@@ -17,7 +17,7 @@ export default function TabLayout() {
 			<Tabs.Screen
 				name="home"
 				options={{
-					title: t("tabs.home", "Bosh sahifa"),
+					title: t("tabs.home", "Asosiy"),
 					tabBarIcon: ({ color, size }) => (
 						<Home size={size} color={color} strokeWidth={2.2} />
 					),
@@ -25,11 +25,21 @@ export default function TabLayout() {
 			/>
 
 			<Tabs.Screen
-				name="practice"
+				name="contest"
 				options={{
-					title: t("tabs.practice", "Mashq"),
+					title: t("tabs.contest", "Contest"),
 					tabBarIcon: ({ color, size }) => (
-						<Award size={size} color={color} strokeWidth={2.2} />
+						<Trophy size={size} color={color} strokeWidth={2.2} />
+					),
+				}}
+			/>
+
+			<Tabs.Screen
+				name="search"
+				options={{
+					title: t("tabs.search", "Qidiruv"),
+					tabBarIcon: ({ color, size }) => (
+						<Search size={size} color={color} strokeWidth={2.2} />
 					),
 				}}
 			/>

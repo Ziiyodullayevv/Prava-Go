@@ -1,5 +1,7 @@
-import React, { useCallback, useState } from "react";
-import { Pressable, ScrollView } from "react-native";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { YandexRippleButton } from "@/components/YandexRippleButton";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import {
@@ -8,23 +10,18 @@ import {
 	CircleCheck,
 	CircleHelp,
 	CircleX,
+	RotateCcw,
+	Sparkles,
+	Zap,
 } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Box } from "@/components/ui/box";
 import { Heading } from "@/components/ui/heading";
 import { Text } from "@/components/ui/text";
-import { Button, ButtonSpinner, ButtonText } from "@/components/ui/button";
-import { Divider } from "@/components/ui/divider";
 import { Image } from "@/components/ui/image";
-import {
-	Modal,
-	ModalBackdrop,
-	ModalBody,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
-} from "@/components/ui/modal";
+import { Skeleton } from "@/components/ui/skeleton";
+import { GradientIconFrame } from "@/components/GradientIconFrame";
 import { Colors } from "@/constants/Colors";
 import { useAppTheme } from "@/contexts/theme-context";
 import { useAuth } from "@/contexts/auth-context";
@@ -33,36 +30,28 @@ import {
 	useTheoryTopicDetail,
 	useTheoryTestSettings,
 } from "@/features/theory/hooks";
-import {
-	completeTheorySession,
-	createTheorySession,
-	loadTopicQuestionBank,
-	type TopicQuestionBank,
-} from "@/features/theory/api";
-import { flushSessionCompletionQueue } from "@/features/theory/offline-queue";
 import { getTopicIllustration } from "@/features/theory/ui-mappers";
-import type { TheorySession } from "@/features/theory/types";
-import {
-	getTheorySessionLangCacheKey,
-	getTheoryTopicQuestionBankLangCacheKey,
-	peekMemoryCache,
-	writeCache,
-} from "@/features/theory/cache";
 import { useI18n } from "@/locales/i18n-provider";
 import { Icon } from "@/components/ui/icon";
+import { useStartQuizSessionMutation } from "@/features/quiz/api";
+import {
+	getFloatingActionBottomOffset,
+	getFloatingActionContentPadding,
+} from "@/lib/safe-area";
 
 type StatItemProps = {
 	label: string;
-	value: number;
+	value: number | string;
 	icon: React.ComponentType<{
 		size?: number;
 		color?: string;
 		strokeWidth?: number;
 	}>;
 	className: string;
+	isLoading?: boolean;
 };
 
-function StatItem({ label, value, icon, className }: StatItemProps) {
+function StatItem({ label, value, icon, className, isLoading }: StatItemProps) {
 	const StatIcon = icon;
 
 	return (
@@ -75,7 +64,43 @@ function StatItem({ label, value, icon, className }: StatItemProps) {
 					{label}
 				</Text>
 			</Box>
-			<Heading className="mt-1 text-3xl font-semibold">{value}</Heading>
+			{isLoading ? (
+				<Skeleton className="mt-2 h-8 w-14 rounded-md" />
+			) : (
+				<Heading className="mt-1 text-3xl font-semibold">{value}</Heading>
+			)}
+		</Box>
+	);
+}
+
+type SettingsInfoRowProps = {
+	label: string;
+	value: number | string;
+	isLoading?: boolean;
+	withDivider?: boolean;
+};
+
+function SettingsInfoRow({
+	label,
+	value,
+	isLoading,
+	withDivider = true,
+}: SettingsInfoRowProps) {
+	return (
+		<Box
+			className={[
+				"min-h-14 flex-row items-center justify-between py-3",
+				withDivider ? "border-b border-foreground/10" : "",
+			].join(" ")}
+		>
+			<Text className="flex-1 pr-4 text-base font-normal">{label}</Text>
+			{isLoading ? (
+				<Skeleton className="h-5 w-14 rounded-md" />
+			) : (
+				<Text className="text-sm font-semibold text-muted-foreground">
+					{value}
+				</Text>
+			)}
 		</Box>
 	);
 }
@@ -91,9 +116,12 @@ export default function TheoryTopicDetailsScreen() {
 	const text = isDark ? "#ECEDEE" : "#111111";
 	const muted = isDark ? "#b0b0b0" : "#4b4b4b";
 	const primaryForegroundColor = isDark ? "#171717" : "#FAFAFA";
+	const panelBg = isDark ? "#202020" : "#f4f4f4";
+	const settingsCardBg = isDark ? "#171717" : "#ffffff";
+	const bottomActionOffset = getFloatingActionBottomOffset(insets.bottom);
 	const [startLoading, setStartLoading] = useState(false);
 	const [startError, setStartError] = useState("");
-	const [isNoMistakesModalOpen, setIsNoMistakesModalOpen] = useState(false);
+	const startQuizSessionMutation = useStartQuizSessionMutation();
 
 	const params = useLocalSearchParams<{ slug?: string }>();
 	const slug = typeof params.slug === "string" ? params.slug : "";
@@ -106,35 +134,39 @@ export default function TheoryTopicDetailsScreen() {
 	const {
 		settings,
 		isReady,
-		setShowMistakesOnly,
-		setShuffleQuestions,
 		setAutoAdvance,
 	} = useTheoryTestSettings();
+	const autoAdvanceRef = useRef(settings.autoAdvance);
+
+	useEffect(() => {
+		autoAdvanceRef.current = settings.autoAdvance;
+	}, [settings.autoAdvance]);
+
+	const handleAutoAdvanceChange = useCallback(
+		(value: boolean) => {
+			autoAdvanceRef.current = value;
+			setAutoAdvance(value);
+		},
+		[setAutoAdvance],
+	);
 
 	const topic = detail?.topic ?? null;
 	const topicTitle = topic?.title ?? t("theory.title", "Theory");
 	const topicDescription =
 		topic?.subtitle || t("theory.sectionSubtitle", "Theory section");
 	const progressPercent = topic?.progressPercent ?? 0;
-
-	const syncPendingCompletions = useCallback(async () => {
-		if (!user?.id) return;
-		await flushSessionCompletionQueue(user.id, async (item) => {
-			await completeTheorySession({
-				userId: item.userId,
-				sessionId: item.sessionId,
-				answers: item.answers,
-			});
-		});
-	}, [user?.id]);
+	const questionCount = topic?.totalQuestions ?? 0;
+	const timeLimitMinutes =
+		topic?.timeLimitMinutes ??
+		(questionCount > 0 ? Math.ceil((questionCount * 40) / 60) : 0);
+	const tokenCost = topic?.tokenCost ?? Math.max(1, Math.ceil(questionCount / 10)) * 8;
 
 	useFocusEffect(
 		useCallback(() => {
 			let isCancelled = false;
 
 			const refreshOnFocus = async () => {
-				if (!user?.id || !slug) return;
-				void syncPendingCompletions().catch(() => {});
+				if (!slug) return;
 
 				if (isCancelled) return;
 				await reload();
@@ -145,129 +177,86 @@ export default function TheoryTopicDetailsScreen() {
 			return () => {
 				isCancelled = true;
 			};
-		}, [reload, slug, syncPendingCompletions, user?.id]),
+		}, [reload, slug]),
 	);
 
 	const handleStartTest = async () => {
-		if (!user?.id || !topic || startLoading) return;
+		if (!topic || startLoading) return;
 
 		setStartError("");
-		setIsNoMistakesModalOpen(false);
 		setStartLoading(true);
 		try {
-			const topicBankKey = getTheoryTopicQuestionBankLangCacheKey(
-				topic.id,
-				language,
-			);
-			const memoryBank = peekMemoryCache<TopicQuestionBank>(topicBankKey);
-
-			let topicBank: TopicQuestionBank;
-			let sessionResult: Awaited<ReturnType<typeof createTheorySession>>;
-
-			if (memoryBank && memoryBank.questions.length > 0) {
-				topicBank = memoryBank;
-				sessionResult = await createTheorySession({
-					userId: user.id,
-					topicId: topic.id,
-					mode: "topic_practice",
-					settings,
-					availableQuestionIds: topicBank.questions.map(
-						(item) => item.questionId,
-					),
-				});
-				void loadTopicQuestionBank(topic.id).catch(() => {});
-			} else {
-				const [loadedBank, createdSession] = await Promise.all([
-					loadTopicQuestionBank(topic.id),
-					createTheorySession({
-						userId: user.id,
-						topicId: topic.id,
-						mode: "topic_practice",
-						settings,
-					}),
-				]);
-				topicBank = loadedBank;
-				sessionResult = createdSession;
-			}
-
-			const { sessionId, startedAt, sessionQuestions } = sessionResult;
-
-			const bankByQuestionId = new Map(
-				topicBank.questions.map((item) => [item.questionId, item]),
-			);
-			const preparedQuestions = sessionQuestions
-				.map((item) => {
-					const cachedQuestion = bankByQuestionId.get(item.questionId);
-					if (!cachedQuestion) return null;
-					return {
-						sessionQuestionId: item.id,
-						questionId: item.questionId,
-						position: item.position,
-						prompt: cachedQuestion.prompt,
-						imageUrl: cachedQuestion.imageUrl,
-						explanation: cachedQuestion.explanation,
-						options: cachedQuestion.options,
-						selectedOptionId: null,
-						isCorrect: null,
-						answeredAt: null,
-					};
-				})
-				.filter(Boolean) as TheorySession["questions"];
-
-			if (preparedQuestions.length === sessionQuestions.length) {
-				const preparedSession: TheorySession = {
-					id: sessionId,
-					userId: user.id,
-					topicId: topic.id,
-					topicSlug: topic.slug,
-					topicTitle: topic.title,
-					mode: "topic_practice",
-					totalQuestions: preparedQuestions.length,
-					settings,
-					startedAt,
-					finishedAt: null,
-					scoreCorrect: 0,
-					scoreIncorrect: 0,
-					questions: preparedQuestions,
-				};
-				void writeCache(
-					getTheorySessionLangCacheKey(user.id, sessionId, language),
-					preparedSession,
-				).catch(() => {});
-			}
+			const session = await startQuizSessionMutation.mutateAsync({
+				categoryId: topic.id,
+			});
 
 			router.push({
 				pathname: "/tabs/(questions)/theory/test/[sessionId]",
-				params: { sessionId },
+				params: {
+					sessionId: String(session.id),
+					auto: autoAdvanceRef.current ? "1" : "0",
+					tokenCost: String(tokenCost),
+				},
 			});
 		} catch (err) {
 			const message =
 				err instanceof Error
 					? err.message
 					: "Testni boshlashda xatolik yuz berdi.";
-			const isNoMistakesOnlyError =
-				settings.showMistakesOnly &&
-				message.includes("Noto'g'ri ishlangan savollar topilmadi.");
-
-			if (isNoMistakesOnlyError) {
-				setStartError("");
-				setIsNoMistakesModalOpen(true);
-			} else {
-				setStartError(message);
-			}
+			setStartError(message);
 		} finally {
 			setStartLoading(false);
 		}
 	};
 
 	return (
-		<Box className="flex-1 pt-safe bg-background">
+		<Box
+			className="flex-1 pt-safe"
+			style={{ backgroundColor: isDark ? palette.background : "#ffffff" }}
+		>
+			{isDark ? null : (
+				<LinearGradient
+					pointerEvents="none"
+					colors={[
+						"rgb(255,255,255)",
+						"rgba(255,255,255,0.5)",
+						"rgba(255,255,255,0)",
+					]}
+					start={{ x: 0.5, y: 0 }}
+					end={{ x: 0.5, y: 1 }}
+					style={{
+						position: "absolute",
+						left: 0,
+						right: 0,
+						top: 0,
+						height: 120,
+					}}
+				/>
+			)}
+
 			<Box className="px-4 my-2 flex-row items-center justify-between">
-				<Pressable onPress={() => router.back()}>
-					<Box className="h-12 w-12 rounded-full items-center shadow-hard-5 justify-center bg-card">
-						<ChevronLeft size={24} color={palette.text} />
-					</Box>
-				</Pressable>
+				<Box
+					style={{
+						elevation: 1,
+						shadowColor: "#000",
+						shadowOffset: { width: 0, height: 2 },
+						shadowOpacity: isDark ? 0.14 : 0.08,
+						shadowRadius: 3,
+					}}
+				>
+					<YandexRippleButton
+						onPress={() => router.replace("/tabs/(questions)/theory")}
+						borderRadius={9999}
+					>
+						<GradientIconFrame
+							size={48}
+							borderRadius={999}
+							innerBorderRadius={999}
+						>
+							<ChevronLeft size={24} color={palette.text} />
+						</GradientIconFrame>
+					</YandexRippleButton>
+				</Box>
 
 				<Box className="items-center">
 					<Heading className="text-lg font-semibold" style={{ color: text }}>
@@ -284,7 +273,7 @@ export default function TheoryTopicDetailsScreen() {
 			<ScrollView
 				showsVerticalScrollIndicator={false}
 				contentContainerStyle={{
-					paddingBottom: Math.max(insets.bottom, 12) + 112,
+					paddingBottom: getFloatingActionContentPadding(insets.bottom),
 				}}
 			>
 				<Box className="pt-1">
@@ -331,7 +320,10 @@ export default function TheoryTopicDetailsScreen() {
 					</Box>
 				) : null}
 
-				<Box className="mt-6 rounded-t-[34px] h-full bg-card px-4 pt-5 pb-7">
+				<Box
+					className="mt-6 rounded-t-[34px] h-full px-4 pt-5 pb-7"
+					style={{ backgroundColor: panelBg }}
+				>
 					<Text className="text-sm uppercase tracking-wide text-muted-foreground">
 						{t("theory.statsTitle", "Your answer stats")}
 					</Text>
@@ -339,46 +331,39 @@ export default function TheoryTopicDetailsScreen() {
 					<Box className="rounded-2xl py-4">
 						<Box className="flex-row items-center">
 							<StatItem
-								className="text-blue-700"
+								className=""
 								label={t("theory.questions", "Questions")}
-								value={topic?.totalQuestions ?? 0}
+								value={questionCount}
 								icon={CircleHelp}
+								isLoading={isLoading}
 							/>
 							<Box className="mx-2 h-16 w-[1px] bg-border/70" />
 							<StatItem
-								className="text-green-700"
+								className=""
 								label={t("theory.correct", "Correct")}
 								value={topic?.correctCount ?? 0}
 								icon={CircleCheck}
+								isLoading={isLoading}
 							/>
 							<Box className="mx-2 h-16 w-[1px] bg-border/70" />
 							<StatItem
 								label={t("theory.incorrect", "Incorrect")}
 								value={topic?.incorrectCount ?? 0}
 								icon={CircleX}
-								className="text-red-700"
+								className=""
+								isLoading={isLoading}
 							/>
 						</Box>
 					</Box>
 
 					<Text className="text-sm uppercase tracking-wide text-muted-foreground">
-						{t("theory.additionalSettings", "Additional settings")}
+						{t("practice.testSettings", "Test sozlamalari")}
 					</Text>
 
-					<Box className="mt-3 rounded-3xl bg-background px-4">
-						<ToggleRow
-							label={t(
-								"theory.settings.mistakesOnly",
-								"Show only mistaken questions",
-							)}
-							value={settings.showMistakesOnly}
-							onValueChange={setShowMistakesOnly}
-						/>
-						<ToggleRow
-							label={t("theory.settings.shuffleQuestions", "Shuffle questions")}
-							value={settings.shuffleQuestions}
-							onValueChange={setShuffleQuestions}
-						/>
+					<Box
+						className="mt-3 rounded-3xl px-4"
+						style={{ backgroundColor: settingsCardBg }}
+					>
 						{isReady ? (
 							<ToggleRow
 								label={t(
@@ -386,15 +371,80 @@ export default function TheoryTopicDetailsScreen() {
 									"Auto-advance to next question",
 								)}
 								value={settings.autoAdvance}
-								onValueChange={setAutoAdvance}
+								onValueChange={handleAutoAdvanceChange}
+								withDivider
 							/>
 						) : (
-							<Box className="h-14 flex-row items-center justify-between border-b border-foreground/10">
+							<Box className="min-h-14 flex-row items-center justify-between border-b border-foreground/10 py-3">
 								<Text className="text-base font-normal text-muted-foreground">
 									{t("theory.settings.loading", "Settings are loading...")}
 								</Text>
 							</Box>
 						)}
+						<SettingsInfoRow
+							label={t("practice.price", "Narx")}
+							value={tokenCost}
+							isLoading={isLoading}
+						/>
+						<SettingsInfoRow
+							label={t("practice.minutes", "Daqiqa")}
+							value={timeLimitMinutes}
+							isLoading={isLoading}
+						/>
+						<SettingsInfoRow
+							label={t("practice.questions.title", "Savollar")}
+							value={questionCount}
+							isLoading={isLoading}
+							withDivider={false}
+						/>
+					</Box>
+
+					<Text className="text-sm uppercase tracking-wide text-muted-foreground mt-5">
+						{t("tokenConfirm.rulesTitle", "Token qoidalari")}
+					</Text>
+
+					<Box
+						className="mt-3 rounded-3xl px-4"
+						style={{ backgroundColor: settingsCardBg }}
+					>
+						<Box className="h-14 flex-row items-center justify-between border-b border-foreground/10">
+							<Box className="flex-row items-center gap-3">
+								<Zap size={16} color="#ff9f2f" strokeWidth={2.2} />
+								<Text className="text-base font-normal">
+									{t("tokenConfirm.costLabel", "Yechiladi")}
+								</Text>
+							</Box>
+							<Text
+								className="text-sm font-semibold"
+								style={{ color: "#ff9f2f" }}
+							>
+								{tokenCost} {t("tokenConfirm.tokenWord", "tanga")}
+							</Text>
+						</Box>
+
+						<Box className="h-14 flex-row items-center justify-between border-b border-foreground/10">
+							<Box className="flex-row items-center gap-3">
+								<RotateCcw size={16} color="#3b82f6" strokeWidth={2.2} />
+								<Text className="text-base font-normal">
+									{t("tokenConfirm.refundLabel", "Qaytariladi")}
+								</Text>
+							</Box>
+							<Text className="text-sm font-semibold text-muted-foreground">
+								{t("tokenConfirm.refundCondition", "80%+ natijada")}
+							</Text>
+						</Box>
+
+						<Box className="h-14 flex-row items-center justify-between">
+							<Box className="flex-row items-center gap-3">
+								<Sparkles size={16} color="#10b981" strokeWidth={2.2} />
+								<Text className="text-base font-normal">
+									{t("tokenConfirm.bonusLabel", "Bonus tokenlar")}
+								</Text>
+							</Box>
+							<Text className="text-sm font-semibold text-muted-foreground">
+								{t("tokenConfirm.bonusCondition", "Muvaffaqiyatda")}
+							</Text>
+						</Box>
 					</Box>
 
 					{startError ? (
@@ -403,63 +453,56 @@ export default function TheoryTopicDetailsScreen() {
 				</Box>
 			</ScrollView>
 
+			<LinearGradient
+				pointerEvents="none"
+				colors={
+					isDark
+						? ["rgba(0,0,0,0)", "rgba(0,0,0,0.4)", "rgba(0,0,0,0.78)"]
+						: [
+								"rgba(255,255,255,0)",
+								"rgba(255,255,255,0.5)",
+								"rgb(255,255,255)",
+							]
+				}
+				start={{ x: 0.5, y: 0.16 }}
+				end={{ x: 0.5, y: 1 }}
+				style={{
+					position: "absolute",
+					left: 0,
+					right: 0,
+					bottom: 0,
+					height: 110,
+				}}
+			/>
+
 			<Box
-				className="absolute left-0 right-0 bottom-0 px-4 pt-3 bg-card border-t border-border/40"
-				style={{ paddingBottom: Math.max(insets.bottom, 12) }}
+				className="absolute left-0 right-0 px-7"
+				style={{ bottom: bottomActionOffset, zIndex: 20, elevation: 20 }}
 			>
-				<Button
-					className="h-14 rounded-2xl bg-primary"
+				{startError ? (
+					<Text className="mb-2 text-sm text-destructive">{startError}</Text>
+				) : null}
+				<Pressable
 					onPress={handleStartTest}
-					disabled={isLoading || !topic || startLoading}
+					disabled={!topic || startLoading}
+					style={({ pressed }) => ({
+						opacity: !topic || startLoading ? 0.5 : pressed ? 0.88 : 1,
+						transform: [{ scale: pressed ? 0.992 : 1 }],
+					})}
 				>
-					{startLoading ? (
-						<ButtonSpinner color={primaryForegroundColor} />
-					) : null}
-					<ButtonText className="text-base font-semibold text-primary-foreground">
-						{startLoading
-							? t("common.starting", "Starting...")
-							: t("theory.startTest", "Start test")}
-					</ButtonText>
-				</Button>
+					<Box className="h-[52px] rounded-[26px] bg-primary flex-row items-center justify-center gap-2">
+						{startLoading ? (
+							<ActivityIndicator color={primaryForegroundColor} />
+						) : null}
+						<Text className="text-base font-semibold text-primary-foreground">
+							{startLoading
+								? t("common.starting", "Starting...")
+								: t("theory.startTest", "Start test")}
+						</Text>
+					</Box>
+				</Pressable>
 			</Box>
 
-			<Modal
-				isOpen={isNoMistakesModalOpen}
-				onClose={() => setIsNoMistakesModalOpen(false)}
-				size="lg"
-			>
-				<ModalBackdrop className="bg-foreground/20 !backdrop-blur-2xl" />
-				<ModalContent className="rounded-[30px] bg-background p-5">
-					<ModalHeader />
-					<ModalBody className="mt-3 text-center mb-5">
-						<Image
-							className="mx-auto"
-							source={require("../../../../assets/images/alert.webp")}
-							alt=""
-						/>
-						<Divider className="mx-4 my-4" />
-						<Heading className="text-center" size="md">
-							{t("theory.mistakesOnly.emptyTitle", "Diqqat")}
-						</Heading>
-
-						<Text className="text-base text-center mt-1 text-muted-foreground">
-							{t(
-								"theory.mistakesOnly.emptyMessage",
-								"Hozircha xato qilingan savollar topilmadi. Avval oddiy test ishlang.",
-							)}
-						</Text>
-					</ModalBody>
-					<ModalFooter className="justify-center">
-						<Button
-							size="lg"
-							className="rounded-full px-10"
-							onPress={() => setIsNoMistakesModalOpen(false)}
-						>
-							<ButtonText>{t("common.understood", "Tushundim")}</ButtonText>
-						</Button>
-					</ModalFooter>
-				</ModalContent>
-			</Modal>
 		</Box>
 	);
 }
